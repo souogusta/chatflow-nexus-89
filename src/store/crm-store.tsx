@@ -17,6 +17,7 @@ interface FinishedDeal {
 interface CRMCtx {
   deals: Deal[];
   setDeals: React.Dispatch<React.SetStateAction<Deal[]>>;
+  addDeal: (deal: Deal) => void;
   moveDeal: (id: string, stage: DealStage) => void;
   updateDeal: (id: string, patch: Partial<Deal>) => void;
   finished: FinishedDeal[];
@@ -35,6 +36,7 @@ export function CRMProvider({ children }: { children: ReactNode }) {
   const [agents, setAgents] = useState<Agent[]>(INITIAL_AGENTS);
   const [tags, setTags] = useState<string[]>(ALL_TAGS);
 
+  const addDeal = (deal: Deal) => setDeals(prev => [deal, ...prev]);
   const moveDeal = (id: string, stage: DealStage) =>
     setDeals(prev => prev.map(d => (d.id === id ? { ...d, stage } : d)));
   const updateDeal = (id: string, patch: Partial<Deal>) =>
@@ -45,7 +47,7 @@ export function CRMProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <Ctx.Provider value={{ deals, setDeals, moveDeal, updateDeal, finished, finishDeal, agents, setAgents, tags, setTags }}>
+    <Ctx.Provider value={{ deals, setDeals, addDeal, moveDeal, updateDeal, finished, finishDeal, agents, setAgents, tags, setTags }}>
       {children}
     </Ctx.Provider>
   );

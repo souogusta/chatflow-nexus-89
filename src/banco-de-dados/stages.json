@@ -1,0 +1,10 @@
+[
+  { "id": "novo-lead", "title": "Novo lead", "color": "bg-info" },
+  { "id": "primeiro-contato", "title": "Primeiro contato", "color": "bg-info" },
+  { "id": "em-atendimento", "title": "Em atendimento", "color": "bg-primary" },
+  { "id": "proposta-enviada", "title": "Proposta enviada", "color": "bg-primary" },
+  { "id": "negociacao", "title": "Negociação", "color": "bg-warning" },
+  { "id": "aguardando-resposta", "title": "Aguardando resposta", "color": "bg-warning" },
+  { "id": "fechado", "title": "Fechado", "color": "bg-success" },
+  { "id": "perdido", "title": "Perdido", "color": "bg-destructive" }
+]

@@ -7,6 +7,7 @@ import { KanbanColumn } from "@/components/kanban/KanbanColumn";
 import { KanbanCard } from "@/components/kanban/KanbanCard";
 import { DealDetailSheet } from "@/components/kanban/DealDetailSheet";
 import { FinishDealModal } from "@/components/kanban/FinishDealModal";
+import { NewDealModal } from "@/components/kanban/NewDealModal";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
@@ -17,6 +18,8 @@ export default function Kanban() {
   const [selected, setSelected] = useState<Deal | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [finishOpen, setFinishOpen] = useState(false);
+  const [newDealOpen, setNewDealOpen] = useState(false);
+  const selectedDeal = selected ? deals.find(deal => deal.id === selected.id) || selected : null;
 
   const grouped = useMemo(() => {
     const map = new Map<DealStage, Deal[]>();
@@ -44,7 +47,9 @@ export default function Kanban() {
     <AppLayout title="Kanban Comercial" subtitle="Arraste os cards entre as colunas">
       <div className="flex items-center justify-between mb-4">
         <div className="text-sm text-muted-foreground">{deals.length} conversas no funil</div>
-        <Button className="bg-gradient-primary gap-2"><Plus className="w-4 h-4" /> Nova conversa</Button>
+        <Button className="bg-gradient-primary gap-2" onClick={() => setNewDealOpen(true)}>
+          <Plus className="w-4 h-4" /> Criar atendimento
+        </Button>
       </div>
 
       <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
@@ -59,9 +64,10 @@ export default function Kanban() {
         </div>
       </DndContext>
 
-      <DealDetailSheet deal={selected} open={sheetOpen} onOpenChange={setSheetOpen}
+      <DealDetailSheet deal={selectedDeal} open={sheetOpen} onOpenChange={setSheetOpen}
         onFinish={() => { setSheetOpen(false); setFinishOpen(true); }} />
-      <FinishDealModal deal={selected} open={finishOpen} onOpenChange={setFinishOpen} />
+      <FinishDealModal deal={selectedDeal} open={finishOpen} onOpenChange={setFinishOpen} />
+      <NewDealModal open={newDealOpen} onOpenChange={setNewDealOpen} />
     </AppLayout>
   );
 }

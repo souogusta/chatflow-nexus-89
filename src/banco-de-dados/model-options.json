@@ -1,0 +1,5 @@
+[
+  { "id": "econom", "label": "Econômico", "model": "gpt-5.4-nano", "desc": "Triagem e respostas simples" },
+  { "id": "balanced", "label": "Balanceado", "model": "gpt-5.4-mini", "desc": "Atendimento comercial padrão" },
+  { "id": "premium", "label": "Premium", "model": "gpt-5.5", "desc": "Vendas consultivas complexas" }
+]

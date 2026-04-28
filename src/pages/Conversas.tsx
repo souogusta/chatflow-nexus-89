@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { useCRM } from "@/store/crm-store";
 import { SELLERS } from "@/lib/mock-data";
@@ -13,7 +14,22 @@ import { ptBR } from "date-fns/locale";
 
 export default function Conversas() {
   const { deals } = useCRM();
-  const [selectedId, setSelectedId] = useState(deals[0]?.id);
+  const [searchParams] = useSearchParams();
+  const initialDealId = searchParams.get("deal");
+  const query = searchParams.get("q")?.toLowerCase().trim() || "";
+  const [conversationSearch, setConversationSearch] = useState(query);
+  const [selectedId, setSelectedId] = useState(
+    initialDealId && deals.some(d => d.id === initialDealId) ? initialDealId : deals[0]?.id
+  );
+  const activeSearch = conversationSearch.toLowerCase().trim();
+  const visibleDeals = activeSearch
+    ? deals.filter(d =>
+      d.customer.toLowerCase().includes(activeSearch) ||
+      d.phone.toLowerCase().includes(activeSearch) ||
+      d.lastMessage.toLowerCase().includes(activeSearch) ||
+      d.tags.some(tag => tag.toLowerCase().includes(activeSearch))
+    )
+    : deals;
   const selected = deals.find(d => d.id === selectedId);
   const seller = SELLERS.find(s => s.id === selected?.sellerId);
 
@@ -31,11 +47,16 @@ export default function Conversas() {
           <div className="p-3 border-b border-border">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input placeholder="Buscar conversa..." className="pl-9 bg-secondary border-transparent" />
+              <Input
+                value={conversationSearch}
+                onChange={event => setConversationSearch(event.target.value)}
+                placeholder="Buscar conversa..."
+                className="pl-9 bg-secondary border-transparent"
+              />
             </div>
           </div>
           <div className="flex-1 overflow-y-auto scrollbar-thin">
-            {deals.map(d => {
+            {visibleDeals.map(d => {
               const s = SELLERS.find(x => x.id === d.sellerId);
               return (
                 <button key={d.id} onClick={() => setSelectedId(d.id)}
@@ -56,6 +77,9 @@ export default function Conversas() {
                 </button>
               );
             })}
+            {visibleDeals.length === 0 && (
+              <div className="p-6 text-center text-xs text-muted-foreground">Nenhuma conversa encontrada.</div>
+            )}
           </div>
         </aside>
 

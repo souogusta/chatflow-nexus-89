@@ -1,15 +1,17 @@
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { MetricCard } from "@/components/shared/MetricCard";
 import { ClientTemperatureBadge } from "@/components/shared/Badges";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useCRM } from "@/store/crm-store";
 import { SELLERS, MONTHLY_SERIES, REFUSAL_PIE, SELLER_RANKING } from "@/lib/mock-data";
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, CartesianGrid, Area, AreaChart } from "recharts";
+import { Line, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, CartesianGrid, Area, AreaChart } from "recharts";
 import { MessageCircle, Clock, AlertTriangle, ShoppingBag, TrendingUp, Flame, Thermometer, Snowflake, ChevronRight } from "lucide-react";
-import { useNavigate } from "react-router-dom";
 
 const PERIODS = [
   { id: "today", label: "Hoje", days: 1 },
@@ -19,38 +21,76 @@ const PERIODS = [
 ];
 
 const PIE_COLORS = ["hsl(var(--primary))", "hsl(var(--info))", "hsl(var(--warning))", "hsl(var(--hot))", "hsl(var(--success))", "hsl(var(--muted-foreground))"];
+const sellerMultipliers: Record<string, number> = { all: 1, s1: 1.16, s2: 1.04, s3: 0.78, s4: 0.92, s5: 0.86 };
+const formatBRL = (value: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(value);
+
+function daysBetween(start: string, end: string) {
+  if (!start || !end) return 30;
+  const startDate = new Date(`${start}T00:00:00`);
+  const endDate = new Date(`${end}T00:00:00`);
+  const diff = Math.floor((+endDate - +startDate) / 86400000) + 1;
+  return Math.min(Math.max(diff, 1), 30);
+}
 
 export default function Dashboard() {
   const [period, setPeriod] = useState("7d");
   const [seller, setSeller] = useState("all");
+  const [customStart, setCustomStart] = useState("2026-04-01");
+  const [customEnd, setCustomEnd] = useState("2026-04-28");
   const { deals } = useCRM();
   const navigate = useNavigate();
 
-  const days = PERIODS.find(p => p.id === period)?.days ?? 7;
-  const series = useMemo(() => MONTHLY_SERIES.slice(-days), [days]);
+  const days = period === "custom"
+    ? daysBetween(customStart, customEnd)
+    : PERIODS.find(p => p.id === period)?.days ?? 7;
+  const multiplier = sellerMultipliers[seller] ?? 1;
+  const filteredDeals = useMemo(
+    () => seller === "all" ? deals : deals.filter(d => d.sellerId === seller),
+    [deals, seller]
+  );
+
+  const series = useMemo(() => (
+    MONTHLY_SERIES.slice(-days).map((item) => ({
+      ...item,
+      atendimentos: Math.max(1, Math.round(item.atendimentos * multiplier)),
+      vendas: Math.max(0, Math.round(item.vendas * multiplier * 0.96)),
+    }))
+  ), [days, multiplier]);
 
   const tempCounts = useMemo(() => ({
-    quente: deals.filter(d => d.temperature === "quente").length,
-    morno: deals.filter(d => d.temperature === "morno").length,
-    frio: deals.filter(d => d.temperature === "frio").length,
-  }), [deals]);
+    quente: filteredDeals.filter(d => d.temperature === "quente").length,
+    morno: filteredDeals.filter(d => d.temperature === "morno").length,
+    frio: filteredDeals.filter(d => d.temperature === "frio").length,
+  }), [filteredDeals]);
 
-  const critical = deals
+  const totalAtendimentos = series.reduce((sum, item) => sum + item.atendimentos, 0);
+  const totalVendas = series.reduce((sum, item) => sum + item.vendas, 0);
+  const revenue = filteredDeals.reduce((sum, item) => sum + (item.estimatedValue || 0), 0) * multiplier;
+  const conversion = totalAtendimentos ? ((totalVendas / totalAtendimentos) * 100).toFixed(1) : "0.0";
+  const unread = filteredDeals.filter(d => d.unread).length;
+
+  const ranking = useMemo(() => (
+    seller === "all" ? SELLER_RANKING : SELLER_RANKING.filter(s => s.id === seller)
+  ), [seller]);
+
+  const critical = filteredDeals
     .filter(d => d.unread || d.temperature === "quente")
     .sort((a, b) => +new Date(a.lastInteraction) - +new Date(b.lastInteraction))
     .slice(0, 5);
 
   return (
     <AppLayout title="Dashboard" subtitle="Visão geral do seu atendimento comercial">
-      {/* Filters */}
-      <div className="flex flex-wrap items-center gap-3 mb-6">
-        <Select value={seller} onValueChange={setSeller}>
-          <SelectTrigger className="w-[200px] bg-card rounded-xl"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todas vendedoras</SelectItem>
-            {SELLERS.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
-          </SelectContent>
-        </Select>
+      <div className="flex flex-wrap items-end gap-3 mb-6">
+        <div>
+          <Label className="text-xs text-muted-foreground">Atendente</Label>
+          <Select value={seller} onValueChange={setSeller}>
+            <SelectTrigger className="w-[200px] bg-card rounded-xl"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas vendedoras</SelectItem>
+              {SELLERS.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
 
         <div className="flex items-center gap-1 bg-card rounded-xl p-1 border border-border/60">
           {PERIODS.map(p => (
@@ -60,21 +100,32 @@ export default function Dashboard() {
             </button>
           ))}
         </div>
+
+        {period === "custom" && (
+          <div className="flex flex-wrap items-end gap-2">
+            <div>
+              <Label htmlFor="start" className="text-xs text-muted-foreground">Início</Label>
+              <Input id="start" type="date" value={customStart} onChange={e => setCustomStart(e.target.value)} className="h-9 bg-card" />
+            </div>
+            <div>
+              <Label htmlFor="end" className="text-xs text-muted-foreground">Fim</Label>
+              <Input id="end" type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} className="h-9 bg-card" />
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Metrics */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <MetricCard icon={<MessageCircle className="w-5 h-5" />} label="Total de atendimentos" value="1.284" delta="12.4%" accent="primary" />
-        <MetricCard icon={<Clock className="w-5 h-5" />} label="Tempo médio de resposta" value="2m 18s" delta="8.1%" deltaPositive accent="info" />
-        <MetricCard icon={<AlertTriangle className="w-5 h-5" />} label="Sem resposta" value="23" delta="4.2%" deltaPositive={false} accent="destructive" />
-        <MetricCard icon={<ShoppingBag className="w-5 h-5" />} label="Vendas realizadas" value="R$ 184.5K" delta="18.7%" accent="success" />
-        <MetricCard icon={<TrendingUp className="w-5 h-5" />} label="Taxa de conversão" value="24.8%" delta="3.2%" accent="primary" />
+        <MetricCard icon={<MessageCircle className="w-5 h-5" />} label="Total de atendimentos" value={String(totalAtendimentos)} delta="12.4%" accent="primary" />
+        <MetricCard icon={<Clock className="w-5 h-5" />} label="Tempo médio de resposta" value={`${Math.max(1, Math.round(3 / multiplier))}m ${Math.round(18 / multiplier)}s`} delta="8.1%" deltaPositive accent="info" />
+        <MetricCard icon={<AlertTriangle className="w-5 h-5" />} label="Sem resposta" value={String(unread)} delta="4.2%" deltaPositive={false} accent="destructive" />
+        <MetricCard icon={<ShoppingBag className="w-5 h-5" />} label="Vendas realizadas" value={formatBRL(revenue)} delta="18.7%" accent="success" />
+        <MetricCard icon={<TrendingUp className="w-5 h-5" />} label="Taxa de conversão" value={`${conversion}%`} delta="3.2%" accent="primary" />
         <MetricCard icon={<Flame className="w-5 h-5" />} label="Clientes quentes" value={String(tempCounts.quente)} delta="11.0%" accent="destructive" />
         <MetricCard icon={<Thermometer className="w-5 h-5" />} label="Clientes mornos" value={String(tempCounts.morno)} delta="2.4%" accent="warning" />
         <MetricCard icon={<Snowflake className="w-5 h-5" />} label="Clientes frios" value={String(tempCounts.frio)} delta="6.0%" deltaPositive={false} accent="info" />
       </div>
 
-      {/* Charts row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
         <div className="card-elevated p-6 lg:col-span-2">
           <div className="flex items-start justify-between mb-4">
@@ -106,7 +157,7 @@ export default function Dashboard() {
           <p className="text-xs text-muted-foreground mb-2">Por que perdemos vendas</p>
           <ResponsiveContainer width="100%" height={230}>
             <PieChart>
-              <Pie data={REFUSAL_PIE} dataKey="value" innerRadius={50} outerRadius={85} paddingAngle={2}>
+              <Pie data={REFUSAL_PIE.map(r => ({ ...r, value: Math.round(r.value * multiplier) }))} dataKey="value" innerRadius={50} outerRadius={85} paddingAngle={2}>
                 {REFUSAL_PIE.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
               </Pie>
               <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid hsl(var(--border))", background: "hsl(var(--card))" }} />
@@ -123,7 +174,6 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Ranking + critical */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="card-elevated p-6 lg:col-span-2">
           <h3 className="font-display font-bold text-base mb-4">Ranking de vendedoras</h3>
@@ -139,7 +189,7 @@ export default function Dashboard() {
                 </tr>
               </thead>
               <tbody>
-                {SELLER_RANKING.map((s, i) => (
+                {ranking.map((s, i) => (
                   <tr key={s.id} className="border-b border-border/40 last:border-0">
                     <td className="py-3">
                       <div className="flex items-center gap-2.5">
@@ -148,12 +198,12 @@ export default function Dashboard() {
                         <span className="font-semibold">{s.name}</span>
                       </div>
                     </td>
-                    <td className="py-3 font-semibold">{s.atendimentos}</td>
-                    <td className="py-3 font-semibold text-success">{s.vendas}</td>
+                    <td className="py-3 font-semibold">{Math.round(s.atendimentos * multiplier)}</td>
+                    <td className="py-3 font-semibold text-success">{Math.round(s.vendas * multiplier)}</td>
                     <td className="py-3">
                       <div className="flex items-center gap-2">
                         <div className="w-16 h-1.5 bg-secondary rounded-full overflow-hidden">
-                          <div className="h-full bg-gradient-primary" style={{ width: `${s.conversao * 3}%` }} />
+                          <div className="h-full bg-gradient-primary" style={{ width: `${Math.min(s.conversao * 3, 100)}%` }} />
                         </div>
                         <span className="text-xs font-semibold">{s.conversao}%</span>
                       </div>
@@ -170,19 +220,26 @@ export default function Dashboard() {
           <h3 className="font-display font-bold text-base mb-1">Conversas críticas</h3>
           <p className="text-xs text-muted-foreground mb-4">Aguardando resposta</p>
           <div className="space-y-2.5">
-            {critical.map(d => (
-              <div key={d.id} className="p-3 rounded-xl bg-secondary/60 border border-border/40 hover:bg-secondary transition-colors">
-                <div className="flex items-start justify-between gap-2 mb-1.5">
-                  <div className="font-semibold text-sm truncate">{d.customer}</div>
-                  <ClientTemperatureBadge temp={d.temperature} />
+            {critical.map(d => {
+              const assignedSeller = SELLERS.find(s => s.id === d.sellerId);
+              return (
+                <div key={d.id} className="p-3 rounded-xl bg-secondary/60 border border-border/40 hover:bg-secondary transition-colors">
+                  <div className="flex items-start justify-between gap-2 mb-1.5">
+                    <div className="min-w-0">
+                      <div className="font-semibold text-sm truncate">{d.customer}</div>
+                      <div className="text-[11px] text-muted-foreground truncate">Vendedor: {assignedSeller?.name || "Sem responsável"}</div>
+                    </div>
+                    <ClientTemperatureBadge temp={d.temperature} />
+                  </div>
+                  <p className="text-xs text-muted-foreground truncate mb-2">{d.lastMessage}</p>
+                  <Button size="sm" variant="ghost" className="h-7 text-xs px-2 -ml-2 text-primary hover:text-primary"
+                    onClick={() => navigate(`/conversas?deal=${d.id}`)}>
+                    Abrir conversa <ChevronRight className="w-3 h-3 ml-1" />
+                  </Button>
                 </div>
-                <p className="text-xs text-muted-foreground truncate mb-2">{d.lastMessage}</p>
-                <Button size="sm" variant="ghost" className="h-7 text-xs px-2 -ml-2 text-primary hover:text-primary"
-                  onClick={() => navigate("/conversas")}>
-                  Abrir conversa <ChevronRight className="w-3 h-3 ml-1" />
-                </Button>
-              </div>
-            ))}
+              );
+            })}
+            {critical.length === 0 && <div className="text-xs text-muted-foreground py-6 text-center">Nenhuma conversa crítica para este filtro.</div>}
           </div>
         </div>
       </div>

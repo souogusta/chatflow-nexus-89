@@ -44,14 +44,6 @@ export function Sidebar() {
           </NavLink>
         ))}
       </nav>
-
-      <div className="mt-auto p-4 rounded-2xl bg-white/10 backdrop-blur">
-        <div className="text-xs font-semibold mb-1">Plano Premium</div>
-        <div className="text-[11px] text-white/75 mb-3">3 agentes IA ativos</div>
-        <div className="h-1.5 rounded-full bg-white/20 overflow-hidden">
-          <div className="h-full w-[68%] bg-white rounded-full" />
-        </div>
-      </div>
     </aside>
   );
 }

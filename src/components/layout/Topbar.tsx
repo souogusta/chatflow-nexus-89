@@ -8,11 +8,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { useCRM } from "@/store/crm-store";
-import { SELLERS, STAGES } from "@/lib/mock-data";
+import { SELLERS } from "@/lib/mock-data";
 
 export function Topbar({ title, subtitle }: { title: string; subtitle?: string }) {
   const navigate = useNavigate();
-  const { deals } = useCRM();
+  const { deals, stages } = useCRM();
   const [search, setSearch] = useState("");
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -134,7 +134,7 @@ export function Topbar({ title, subtitle }: { title: string; subtitle?: string }
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos</SelectItem>
-                  {STAGES.map(s => <SelectItem key={s.id} value={s.id}>{s.title}</SelectItem>)}
+                  {stages.map(s => <SelectItem key={s.id} value={s.id}>{s.title}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>

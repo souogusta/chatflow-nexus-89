@@ -22,7 +22,34 @@ const PERIODS = [
 
 const PIE_COLORS = ["hsl(var(--primary))", "hsl(var(--info))", "hsl(var(--warning))", "hsl(var(--hot))", "hsl(var(--success))", "hsl(var(--muted-foreground))"];
 const sellerMultipliers: Record<string, number> = { all: 1, s1: 1.16, s2: 1.04, s3: 0.78, s4: 0.92, s5: 0.86 };
+const refusalReasonParams: Record<string, string> = {
+  "Preço alto": "Preço alto",
+  "Sem orçamento": "Cliente sem orçamento",
+  "Comprou com concorrente": "Comprou com concorrente",
+  "Não respondeu mais": "Não respondeu mais",
+  "Apenas pesquisando": "Está apenas pesquisando",
+  "Outros": "Outros",
+};
 const formatBRL = (value: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(value);
+
+function formatTimeWithoutResponse(lastInteraction: string) {
+  const lastInteractionTime = new Date(lastInteraction).getTime();
+  if (Number.isNaN(lastInteractionTime)) return "Sem registro";
+
+  const totalMinutes = Math.max(0, Math.floor((Date.now() - lastInteractionTime) / 60000));
+  if (totalMinutes < 1) return "Agora";
+  if (totalMinutes < 60) return `${totalMinutes}min`;
+
+  const totalHours = Math.floor(totalMinutes / 60);
+  const remainingMinutes = totalMinutes % 60;
+  if (totalHours < 24) {
+    return remainingMinutes ? `${totalHours}h ${remainingMinutes}min` : `${totalHours}h`;
+  }
+
+  const days = Math.floor(totalHours / 24);
+  const remainingHours = totalHours % 24;
+  return remainingHours ? `${days}d ${remainingHours}h` : `${days}d`;
+}
 
 function daysBetween(start: string, end: string) {
   if (!start || !end) return 30;
@@ -74,9 +101,30 @@ export default function Dashboard() {
   ), [seller]);
 
   const critical = filteredDeals
-    .filter(d => d.unread || d.temperature === "quente")
+    .filter(d => d.temperature === "quente")
     .sort((a, b) => +new Date(a.lastInteraction) - +new Date(b.lastInteraction))
     .slice(0, 5);
+  const refusalChartData = useMemo(() => (
+    REFUSAL_PIE.map(r => ({
+      ...r,
+      reason: refusalReasonParams[r.name] || r.name,
+      value: Math.round(r.value * multiplier),
+    }))
+  ), [multiplier]);
+
+  const openRefusalReport = (reason: string) => {
+    const params = new URLSearchParams({
+      report: "atendimentos",
+      period,
+      seller,
+      reason,
+    });
+    if (period === "custom") {
+      params.set("start", customStart);
+      params.set("end", customEnd);
+    }
+    navigate(`/relatorios?${params.toString()}`);
+  };
 
   return (
     <AppLayout title="Dashboard" subtitle="Visão geral do seu atendimento comercial">
@@ -157,18 +205,31 @@ export default function Dashboard() {
           <p className="text-xs text-muted-foreground mb-2">Por que perdemos vendas</p>
           <ResponsiveContainer width="100%" height={230}>
             <PieChart>
-              <Pie data={REFUSAL_PIE.map(r => ({ ...r, value: Math.round(r.value * multiplier) }))} dataKey="value" innerRadius={50} outerRadius={85} paddingAngle={2}>
+              <Pie
+                data={refusalChartData}
+                dataKey="value"
+                innerRadius={50}
+                outerRadius={85}
+                paddingAngle={2}
+                cursor="pointer"
+                onClick={(entry) => openRefusalReport(entry.reason)}
+              >
                 {REFUSAL_PIE.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
               </Pie>
               <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid hsl(var(--border))", background: "hsl(var(--card))" }} />
             </PieChart>
           </ResponsiveContainer>
           <div className="mt-2 grid grid-cols-2 gap-1.5">
-            {REFUSAL_PIE.map((r, i) => (
-              <div key={r.name} className="flex items-center gap-1.5 text-[11px]">
+            {refusalChartData.map((r, i) => (
+              <button
+                key={r.name}
+                type="button"
+                className="flex items-center gap-1.5 rounded-md text-left text-[11px] transition-colors hover:bg-secondary"
+                onClick={() => openRefusalReport(r.reason)}
+              >
                 <div className="w-2 h-2 rounded-full" style={{ background: PIE_COLORS[i % PIE_COLORS.length] }} />
                 <span className="text-muted-foreground truncate">{r.name}</span>
-              </div>
+              </button>
             ))}
           </div>
         </div>
@@ -222,16 +283,21 @@ export default function Dashboard() {
           <div className="space-y-2.5">
             {critical.map(d => {
               const assignedSeller = SELLERS.find(s => s.id === d.sellerId);
+              const waitingTime = formatTimeWithoutResponse(d.lastInteraction);
               return (
                 <div key={d.id} className="p-3 rounded-xl bg-secondary/60 border border-border/40 hover:bg-secondary transition-colors">
                   <div className="flex items-start justify-between gap-2 mb-1.5">
                     <div className="min-w-0">
                       <div className="font-semibold text-sm truncate">{d.customer}</div>
-                      <div className="text-[11px] text-muted-foreground truncate">Vendedor: {assignedSeller?.name || "Sem responsável"}</div>
+                      <div className="text-[11px] font-semibold text-foreground truncate">Vendedor: {assignedSeller?.name || "Sem responsável"}</div>
                     </div>
                     <ClientTemperatureBadge temp={d.temperature} />
                   </div>
                   <p className="text-xs text-muted-foreground truncate mb-2">{d.lastMessage}</p>
+                  <div className="mb-2 flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+                    <Clock className="w-3 h-3" />
+                    <span>Sem resposta há {waitingTime}</span>
+                  </div>
                   <Button size="sm" variant="ghost" className="h-7 text-xs px-2 -ml-2 text-primary hover:text-primary"
                     onClick={() => navigate(`/conversas?deal=${d.id}`)}>
                     Abrir conversa <ChevronRight className="w-3 h-3 ml-1" />

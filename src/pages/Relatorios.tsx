@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { useCRM } from "@/store/crm-store";
-import { SELLERS, STAGES, REFUSAL_REASONS, MONTHLY_SERIES, REFUSAL_PIE } from "@/lib/mock-data";
+import { SELLERS, REFUSAL_REASONS, MONTHLY_SERIES, REFUSAL_PIE } from "@/lib/mock-data";
 import { ClientTemperatureBadge, TagBadge } from "@/components/shared/Badges";
 import { Download, FileSpreadsheet, Play, FileText, Users, Bot, Flame, AlertTriangle, History, ShoppingBag, X } from "lucide-react";
 import { toast } from "sonner";
@@ -23,10 +23,19 @@ const REPORTS = [
   { id: "kanban", name: "Histórico completo do Kanban", desc: "Movimentações entre etapas", icon: History },
 ];
 
-const daysByPeriod: Record<string, number> = { "7d": 7, "30d": 30, "90d": 90 };
+const daysByPeriod: Record<string, number> = { today: 1, "7d": 7, "30d": 30, "90d": 90 };
 const refusalByStage: Record<string, string> = {
   perdido: "Comprou com concorrente",
   "aguardando-resposta": "Não respondeu mais",
+};
+
+const getRefusalReason = (deal: { stage: string; tags: string[]; notes?: string; lastMessage: string }) => {
+  const searchable = `${deal.lastMessage} ${deal.notes || ""} ${deal.tags.join(" ")}`.toLowerCase();
+  if (searchable.includes("preço") || searchable.includes("preco") || searchable.includes("caro") || searchable.includes("desconto")) return "Preço alto";
+  if (searchable.includes("orçamento") || searchable.includes("orcamento")) return "Cliente sem orçamento";
+  if (searchable.includes("concorrente") || searchable.includes("fornecedor")) return "Comprou com concorrente";
+  if (searchable.includes("pesquisando")) return "Está apenas pesquisando";
+  return refusalByStage[deal.stage] || "Outros";
 };
 
 const escapeHtml = (value: string | number | undefined) =>
@@ -101,26 +110,34 @@ const buildPieChartSvg = (data: typeof REFUSAL_PIE) => {
 };
 
 export default function Relatorios() {
-  const { deals, agents } = useCRM();
+  const { deals, agents, stages } = useCRM();
   const [searchParams] = useSearchParams();
-  const [selected, setSelected] = useState("atendimentos");
-  const [period, setPeriod] = useState("30d");
+  const [selected, setSelected] = useState(searchParams.get("report") || "atendimentos");
+  const [period, setPeriod] = useState(searchParams.get("period") || "30d");
+  const [customStart, setCustomStart] = useState(searchParams.get("start") || "2026-04-01");
+  const [customEnd, setCustomEnd] = useState(searchParams.get("end") || "2026-04-28");
   const [seller, setSeller] = useState(searchParams.get("seller") || "all");
   const [stage, setStage] = useState(searchParams.get("stage") || "all");
   const [temperature, setTemperature] = useState(searchParams.get("temp") || "all");
-  const [result, setResult] = useState("all");
-  const [reason, setReason] = useState("all");
-  const [channel, setChannel] = useState("all");
-  const [minValue, setMinValue] = useState("");
+  const [result, setResult] = useState(searchParams.get("result") || "all");
+  const [reason, setReason] = useState(searchParams.get("reason") || "all");
+  const [channel, setChannel] = useState(searchParams.get("channel") || "all");
+  const [minValue, setMinValue] = useState(searchParams.get("minValue") || "");
 
   const filteredDeals = useMemo(() => {
     const cutoff = Date.now() - (daysByPeriod[period] ?? 30) * 86400000;
+    const startDate = new Date(`${customStart}T00:00:00`).getTime();
+    const endDate = new Date(`${customEnd}T23:59:59`).getTime();
     return deals.filter(deal => {
+      const interactionTime = +new Date(deal.lastInteraction);
       const dealResult = deal.stage === "fechado" ? "venda" : deal.stage === "perdido" ? "recusa" : "andamento";
-      const dealReason = refusalByStage[deal.stage] || "Outros";
+      const dealReason = getRefusalReason(deal);
       const dealChannel = deal.tags.includes("Presencial") ? "presencial" : deal.tags.includes("Instagram") ? "instagram" : "wpp1";
+      const matchesPeriod = period === "custom"
+        ? interactionTime >= startDate && interactionTime <= endDate
+        : interactionTime >= cutoff;
 
-      return +new Date(deal.lastInteraction) >= cutoff
+      return matchesPeriod
         && (seller === "all" || deal.sellerId === seller)
         && (stage === "all" || deal.stage === stage)
         && (temperature === "all" || deal.temperature === temperature)
@@ -129,7 +146,7 @@ export default function Relatorios() {
         && (channel === "all" || dealChannel === channel)
         && (!minValue || (deal.estimatedValue || 0) >= Number(minValue));
     });
-  }, [deals, period, seller, stage, temperature, result, reason, channel, minValue]);
+  }, [deals, period, customStart, customEnd, seller, stage, temperature, result, reason, channel, minValue]);
 
   const reportRows = useMemo(() => {
     if (selected === "vendas") return filteredDeals.filter(deal => deal.stage === "fechado");
@@ -170,7 +187,7 @@ export default function Relatorios() {
       const lineSeries = MONTHLY_SERIES.slice(-(daysByPeriod[period] ?? 30));
       const tableRows = reportRows.map(deal => {
         const sellerName = SELLERS.find(s => s.id === deal.sellerId)?.name || "";
-        const stageName = STAGES.find(s => s.id === deal.stage)?.title || "";
+        const stageName = stages.find(s => s.id === deal.stage)?.title || "";
         return `
           <tr>
             <td>${escapeHtml(format(new Date(deal.lastInteraction), "dd/MM/yyyy HH:mm"))}</td>
@@ -274,7 +291,7 @@ export default function Relatorios() {
     const header = ["data", "cliente", "telefone", "vendedora", "status", "temperatura", "valor", "tags"];
     const lines = reportRows.map(deal => {
       const sellerName = SELLERS.find(s => s.id === deal.sellerId)?.name || "";
-      const stageName = STAGES.find(s => s.id === deal.stage)?.title || "";
+      const stageName = stages.find(s => s.id === deal.stage)?.title || "";
       return [
         format(new Date(deal.lastInteraction), "dd/MM/yyyy HH:mm"),
         deal.customer,
@@ -302,13 +319,19 @@ export default function Relatorios() {
         <h3 className="font-semibold text-sm mb-3">Filtros</h3>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
           <div><Label className="text-xs">Período</Label><Select value={period} onValueChange={setPeriod}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>
-            <SelectItem value="7d">7 dias</SelectItem><SelectItem value="30d">30 dias</SelectItem><SelectItem value="90d">90 dias</SelectItem>
+            <SelectItem value="today">Hoje</SelectItem><SelectItem value="7d">7 dias</SelectItem><SelectItem value="30d">30 dias</SelectItem><SelectItem value="90d">90 dias</SelectItem><SelectItem value="custom">Personalizado</SelectItem>
           </SelectContent></Select></div>
+          {period === "custom" && (
+            <>
+              <div><Label className="text-xs">Início</Label><Input type="date" value={customStart} onChange={event => setCustomStart(event.target.value)} /></div>
+              <div><Label className="text-xs">Fim</Label><Input type="date" value={customEnd} onChange={event => setCustomEnd(event.target.value)} /></div>
+            </>
+          )}
           <div><Label className="text-xs">Vendedora</Label><Select value={seller} onValueChange={setSeller}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>
             <SelectItem value="all">Todas</SelectItem>{SELLERS.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
           </SelectContent></Select></div>
           <div><Label className="text-xs">Status</Label><Select value={stage} onValueChange={setStage}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>
-            <SelectItem value="all">Todos</SelectItem>{STAGES.map(s => <SelectItem key={s.id} value={s.id}>{s.title}</SelectItem>)}
+            <SelectItem value="all">Todos</SelectItem>{stages.map(s => <SelectItem key={s.id} value={s.id}>{s.title}</SelectItem>)}
           </SelectContent></Select></div>
           <div><Label className="text-xs">Temperatura</Label><Select value={temperature} onValueChange={setTemperature}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>
             <SelectItem value="all">Todas</SelectItem><SelectItem value="quente">Quente</SelectItem><SelectItem value="morno">Morno</SelectItem><SelectItem value="frio">Frio</SelectItem>
@@ -394,7 +417,7 @@ export default function Relatorios() {
               <tbody>
                 {reportRows.map(d => {
                   const sellerName = SELLERS.find(s => s.id === d.sellerId)?.name;
-                  const stageName = STAGES.find(s => s.id === d.stage)?.title;
+                  const stageName = stages.find(s => s.id === d.stage)?.title;
                   return (
                     <tr key={d.id} className="border-b border-border/40 hover:bg-secondary/40">
                       <td className="py-3 pr-3 text-muted-foreground text-xs">{format(new Date(d.lastInteraction), "dd/MM/yy HH:mm")}</td>

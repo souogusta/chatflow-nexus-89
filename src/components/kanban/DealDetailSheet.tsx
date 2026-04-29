@@ -53,12 +53,11 @@ export function DealDetailSheet({ deal, open, onOpenChange, onFinish }: {
               <DialogTitle className="font-display flex items-center gap-2">
                 <UserRound className="w-5 h-5 text-primary" /> Detalhes do lead
               </DialogTitle>
-              <p className="text-xs text-muted-foreground">{deal.phone}</p>
             </div>
             <Button
-              size="icon"
+              size="sm"
               variant="outline"
-              className="shrink-0 border-success/30 text-success hover:text-success"
+              className="shrink-0 gap-2 border-success/30 text-success hover:text-success"
               title="Abrir conversa no WhatsApp"
               onClick={() => {
                 onOpenChange(false);
@@ -66,6 +65,7 @@ export function DealDetailSheet({ deal, open, onOpenChange, onFinish }: {
               }}
             >
               <MessageCircle className="w-4 h-4" />
+              Abrir conversa
             </Button>
           </div>
         </DialogHeader>

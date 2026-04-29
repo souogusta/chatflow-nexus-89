@@ -2,9 +2,16 @@ import { useDraggable } from "@dnd-kit/core";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Deal, SELLERS } from "@/lib/mock-data";
 import { ClientTemperatureBadge, TagBadge } from "@/components/shared/Badges";
-import { Clock, MessageCircle } from "lucide-react";
+import { Clock } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { cn } from "@/lib/utils";
+
+const temperatureCardStyles = {
+  quente: "border-hot/35 bg-hot-soft/80 hover:border-hot/50",
+  morno: "border-warm/35 bg-warm-soft/80 hover:border-warm/50",
+  frio: "border-cold/35 bg-cold-soft/80 hover:border-cold/50",
+};
 
 export function KanbanCard({ deal, onClick }: { deal: Deal; onClick: () => void }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: deal.id });
@@ -15,11 +22,15 @@ export function KanbanCard({ deal, onClick }: { deal: Deal; onClick: () => void 
   return (
     <div ref={setNodeRef} style={style} {...listeners} {...attributes}
       onClick={onClick}
-      className={`group bg-card rounded-xl p-3 border border-border/60 shadow-sm hover:shadow-soft cursor-pointer transition-all ${isDragging ? "opacity-50 rotate-2" : ""}`}>
+      className={cn(
+        "group rounded-xl border p-3 shadow-sm hover:shadow-soft cursor-pointer transition-all",
+        temperatureCardStyles[deal.temperature],
+        isDragging ? "opacity-50 rotate-2" : "",
+      )}>
       <div className="flex items-start justify-between gap-2 mb-2">
         <div className="min-w-0 flex-1">
           <div className="font-semibold text-sm truncate">{deal.customer}</div>
-          {deal.estimatedValue ? (
+          {deal.stage === "fechado" && deal.estimatedValue ? (
             <div className="text-xs font-bold text-success mt-0.5">R$ {deal.estimatedValue.toLocaleString("pt-BR")}</div>
           ) : null}
         </div>

@@ -10,15 +10,12 @@ import stagesData from "@/banco-de-dados/stages.json";
 import tagsData from "@/banco-de-dados/tags.json";
 
 export type Temperature = "quente" | "morno" | "frio";
-export type DealStage =
-  | "novo-lead"
-  | "primeiro-contato"
-  | "em-atendimento"
-  | "proposta-enviada"
-  | "negociacao"
-  | "aguardando-resposta"
-  | "fechado"
-  | "perdido";
+export type DealStage = string;
+export interface Stage {
+  id: DealStage;
+  title: string;
+  color: string;
+}
 
 export interface Deal {
   id: string;
@@ -52,7 +49,7 @@ export interface Agent {
   handoffMessage: string;
 }
 
-export const STAGES = stagesData as { id: DealStage; title: string; color: string }[];
+export const STAGES = stagesData as Stage[];
 export const SELLERS = sellersData;
 export const REFUSAL_REASONS = refusalReasonsData;
 export const ALL_TAGS = tagsData;

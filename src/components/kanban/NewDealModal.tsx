@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Deal, SELLERS, Temperature } from "@/lib/mock-data";
+import { Deal, Temperature } from "@/lib/mock-data";
 import { useCRM } from "@/store/crm-store";
 import { toast } from "sonner";
 
@@ -20,7 +20,7 @@ const initialForm = {
 };
 
 export function NewDealModal({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
-  const { addDeal } = useCRM();
+  const { addDeal, teamUsers } = useCRM();
   const [form, setForm] = useState(initialForm);
 
   const reset = () => setForm(initialForm);
@@ -36,6 +36,7 @@ export function NewDealModal({ open, onOpenChange }: { open: boolean; onOpenChan
       lastMessage: form.productInterest.trim()
         ? `Atendimento presencial registrado. Interesse: ${form.productInterest.trim()}`
         : "Atendimento presencial registrado na loja.",
+      interest: form.productInterest.trim() || undefined,
       lastInteraction: new Date().toISOString(),
       sellerId: form.sellerId,
       temperature: form.temperature,
@@ -78,7 +79,7 @@ export function NewDealModal({ open, onOpenChange }: { open: boolean; onOpenChan
               <Select value={form.sellerId} onValueChange={(sellerId) => setForm({ ...form, sellerId })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {SELLERS.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                  {teamUsers.filter(user => user.active).map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Deal, SELLERS, Temperature } from "@/lib/mock-data";
+import { Deal, Temperature } from "@/lib/mock-data";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -15,7 +15,7 @@ import { toast } from "sonner";
 export function DealDetailSheet({ deal, open, onOpenChange, onFinish }: {
   deal: Deal | null; open: boolean; onOpenChange: (v: boolean) => void; onFinish: () => void;
 }) {
-  const { updateDeal, tags, setTags } = useCRM();
+  const { updateDeal, tags, setTags, teamUsers } = useCRM();
   const [newTag, setNewTag] = useState("");
   const navigate = useNavigate();
 
@@ -88,8 +88,14 @@ export function DealDetailSheet({ deal, open, onOpenChange, onFinish }: {
           </div>
 
           <div>
-            <Label className="text-xs uppercase text-muted-foreground">Última mensagem</Label>
-            <p className="text-sm bg-secondary rounded-xl p-3 mt-1">{deal.lastMessage}</p>
+            <Label htmlFor="interest">Interesse do Cliente</Label>
+            <Input
+              id="interest"
+              value={deal.interest || ""}
+              onChange={event => updateDeal(deal.id, { interest: event.target.value })}
+              onBlur={() => toast.success("Interesse do cliente atualizado")}
+              placeholder="Ex: Botox"
+            />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -109,7 +115,7 @@ export function DealDetailSheet({ deal, open, onOpenChange, onFinish }: {
               <Select value={deal.sellerId} onValueChange={(v) => { updateDeal(deal.id, { sellerId: v }); toast.success("Responsável alterado"); }}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {SELLERS.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                  {teamUsers.filter(user => user.active).map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>

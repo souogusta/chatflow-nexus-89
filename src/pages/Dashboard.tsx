@@ -4,14 +4,15 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { MetricCard } from "@/components/shared/MetricCard";
 import { ClientTemperatureBadge } from "@/components/shared/Badges";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useCRM } from "@/store/crm-store";
 import { SELLERS, MONTHLY_SERIES, REFUSAL_PIE, SELLER_RANKING } from "@/lib/mock-data";
 import { Line, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, CartesianGrid, Area, AreaChart } from "recharts";
-import { MessageCircle, Clock, AlertTriangle, ShoppingBag, TrendingUp, Flame, Thermometer, Snowflake, ChevronRight } from "lucide-react";
+import { MessageCircle, Clock, AlertTriangle, ShoppingBag, TrendingUp, Flame, Thermometer, Snowflake, ChevronDown, ChevronRight } from "lucide-react";
 
 const PERIODS = [
   { id: "today", label: "Hoje", days: 1 },
@@ -22,6 +23,7 @@ const PERIODS = [
 
 const PIE_COLORS = ["hsl(var(--primary))", "hsl(var(--info))", "hsl(var(--warning))", "hsl(var(--hot))", "hsl(var(--success))", "hsl(var(--muted-foreground))"];
 const sellerMultipliers: Record<string, number> = { all: 1, s1: 1.16, s2: 1.04, s3: 0.78, s4: 0.92, s5: 0.86 };
+const SELLER_IDS = SELLERS.map(s => s.id);
 const refusalReasonParams: Record<string, string> = {
   "Preço alto": "Preço alto",
   "Sem orçamento": "Cliente sem orçamento",
@@ -31,6 +33,33 @@ const refusalReasonParams: Record<string, string> = {
   "Outros": "Outros",
 };
 const formatBRL = (value: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(value);
+const formatSignedInteger = (value: number) => `${value >= 0 ? "+" : ""}${Math.round(value)}`;
+const formatSignedBRL = (value: number) => `${value >= 0 ? "+" : "-"}${formatBRL(Math.abs(value))}`;
+
+function buildMetricDelta(current: number, previous: number, valueFormatter = formatSignedInteger) {
+  const difference = current - previous;
+  const percent = previous ? (difference / previous) * 100 : current ? 100 : 0;
+  return {
+    percent: `${Math.abs(percent).toFixed(1)}%`,
+    value: valueFormatter(difference),
+    positive: difference >= 0,
+  };
+}
+
+function buildHourlySeries(multiplier: number) {
+  const dayBase = MONTHLY_SERIES[MONTHLY_SERIES.length - 1];
+  return Array.from({ length: 24 }, (_, hour) => {
+    const activity = 0.45 + Math.sin((hour - 7) / 24 * Math.PI) * 0.35 + (hour >= 8 && hour <= 18 ? 0.35 : 0);
+    const atendimentos = Math.max(0, Math.round((dayBase.atendimentos / 13) * activity * multiplier));
+    const vendas = Math.max(0, Math.round((dayBase.vendas / 16) * activity * multiplier));
+
+    return {
+      label: `${String(hour).padStart(2, "0")}h`,
+      atendimentos,
+      vendas,
+    };
+  });
+}
 
 function formatTimeWithoutResponse(lastInteraction: string) {
   const lastInteractionTime = new Date(lastInteraction).getTime();
@@ -61,7 +90,7 @@ function daysBetween(start: string, end: string) {
 
 export default function Dashboard() {
   const [period, setPeriod] = useState("7d");
-  const [seller, setSeller] = useState("all");
+  const [selectedSellerIds, setSelectedSellerIds] = useState<string[]>(SELLER_IDS);
   const [customStart, setCustomStart] = useState("2026-04-01");
   const [customEnd, setCustomEnd] = useState("2026-04-28");
   const { deals } = useCRM();
@@ -70,19 +99,51 @@ export default function Dashboard() {
   const days = period === "custom"
     ? daysBetween(customStart, customEnd)
     : PERIODS.find(p => p.id === period)?.days ?? 7;
-  const multiplier = sellerMultipliers[seller] ?? 1;
+  const allSellersSelected = selectedSellerIds.length === SELLER_IDS.length;
+  const sellerParam = allSellersSelected ? "all" : selectedSellerIds.join(",");
+  const multiplier = allSellersSelected
+    ? 1
+    : selectedSellerIds.reduce((sum, id) => sum + (sellerMultipliers[id] ?? 1), 0) / SELLER_IDS.length;
+  const sellerFilterLabel = allSellersSelected
+    ? "Todas vendedoras"
+    : selectedSellerIds.length === 1
+      ? SELLERS.find(s => s.id === selectedSellerIds[0])?.name ?? "1 vendedora"
+      : `${selectedSellerIds.length} vendedoras`;
   const filteredDeals = useMemo(
-    () => seller === "all" ? deals : deals.filter(d => d.sellerId === seller),
-    [deals, seller]
+    () => allSellersSelected ? deals : deals.filter(d => selectedSellerIds.includes(d.sellerId)),
+    [allSellersSelected, deals, selectedSellerIds]
   );
 
   const series = useMemo(() => (
-    MONTHLY_SERIES.slice(-days).map((item) => ({
-      ...item,
+    period === "today"
+      ? buildHourlySeries(multiplier)
+      : MONTHLY_SERIES.slice(-days).map((item) => ({
+      label: item.day,
       atendimentos: Math.max(1, Math.round(item.atendimentos * multiplier)),
       vendas: Math.max(0, Math.round(item.vendas * multiplier * 0.96)),
     }))
-  ), [days, multiplier]);
+  ), [days, multiplier, period]);
+
+  const previousSeries = useMemo(() => {
+    if (period === "today") {
+      return buildHourlySeries(multiplier * 0.88);
+    }
+
+    const previousWindow = MONTHLY_SERIES.slice(-(days * 2), -days);
+    const source = previousWindow.length === days
+      ? previousWindow
+      : MONTHLY_SERIES.slice(-days).map(item => ({
+        ...item,
+        atendimentos: Math.round(item.atendimentos * 0.9),
+        vendas: Math.round(item.vendas * 0.84),
+      }));
+
+    return source.map((item) => ({
+      label: item.day,
+      atendimentos: Math.max(1, Math.round(item.atendimentos * multiplier)),
+      vendas: Math.max(0, Math.round(item.vendas * multiplier * 0.96)),
+    }));
+  }, [days, multiplier, period]);
 
   const tempCounts = useMemo(() => ({
     quente: filteredDeals.filter(d => d.temperature === "quente").length,
@@ -92,13 +153,33 @@ export default function Dashboard() {
 
   const totalAtendimentos = series.reduce((sum, item) => sum + item.atendimentos, 0);
   const totalVendas = series.reduce((sum, item) => sum + item.vendas, 0);
+  const previousAtendimentos = previousSeries.reduce((sum, item) => sum + item.atendimentos, 0);
+  const previousVendas = previousSeries.reduce((sum, item) => sum + item.vendas, 0);
   const revenue = filteredDeals.reduce((sum, item) => sum + (item.estimatedValue || 0), 0) * multiplier;
+  const previousRevenue = revenue * 0.86;
   const conversion = totalAtendimentos ? ((totalVendas / totalAtendimentos) * 100).toFixed(1) : "0.0";
+  const previousConversion = previousAtendimentos ? (previousVendas / previousAtendimentos) * 100 : 0;
   const unread = filteredDeals.filter(d => d.unread).length;
+  const previousUnread = Math.max(0, unread - Math.max(1, Math.round(days / 14)));
+  const previousTempCounts = {
+    quente: Math.max(0, tempCounts.quente - Math.max(1, Math.round(days / 10))),
+    morno: Math.max(0, tempCounts.morno - (period === "30d" ? 4 : Math.max(1, Math.round(days / 7)))),
+    frio: tempCounts.frio + Math.max(1, Math.round(days / 20)),
+  };
+  const metricDeltas = {
+    atendimentos: buildMetricDelta(totalAtendimentos, previousAtendimentos),
+    resposta: buildMetricDelta(Math.max(1, Math.round(198 / multiplier)), Math.max(1, Math.round(224 / multiplier)), value => `${formatSignedInteger(value)}s`),
+    unread: buildMetricDelta(unread, previousUnread),
+    revenue: buildMetricDelta(revenue, previousRevenue, formatSignedBRL),
+    conversion: buildMetricDelta(Number(conversion), previousConversion, value => `${value >= 0 ? "+" : ""}${value.toFixed(1)}pp`),
+    quente: buildMetricDelta(tempCounts.quente, previousTempCounts.quente),
+    morno: buildMetricDelta(tempCounts.morno, previousTempCounts.morno),
+    frio: buildMetricDelta(tempCounts.frio, previousTempCounts.frio),
+  };
 
   const ranking = useMemo(() => (
-    seller === "all" ? SELLER_RANKING : SELLER_RANKING.filter(s => s.id === seller)
-  ), [seller]);
+    allSellersSelected ? SELLER_RANKING : SELLER_RANKING.filter(s => selectedSellerIds.includes(s.id))
+  ), [allSellersSelected, selectedSellerIds]);
 
   const critical = filteredDeals
     .filter(d => d.temperature === "quente")
@@ -116,7 +197,7 @@ export default function Dashboard() {
     const params = new URLSearchParams({
       report: "atendimentos",
       period,
-      seller,
+      seller: sellerParam,
       reason,
     });
     if (period === "custom") {
@@ -126,18 +207,46 @@ export default function Dashboard() {
     navigate(`/relatorios?${params.toString()}`);
   };
 
+  const toggleSeller = (sellerId: string) => {
+    setSelectedSellerIds(current => {
+      const next = current.includes(sellerId)
+        ? current.filter(id => id !== sellerId)
+        : [...current, sellerId];
+
+      return next.length ? next : current;
+    });
+  };
+
+  const toggleAllSellers = () => {
+    setSelectedSellerIds(current => current.length === SELLER_IDS.length ? [SELLER_IDS[0]] : SELLER_IDS);
+  };
+
   return (
     <AppLayout title="Dashboard" subtitle="Visão geral do seu atendimento comercial">
       <div className="flex flex-wrap items-end gap-3 mb-6">
         <div>
           <Label className="text-xs text-muted-foreground">Atendente</Label>
-          <Select value={seller} onValueChange={setSeller}>
-            <SelectTrigger className="w-[200px] bg-card rounded-xl"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todas vendedoras</SelectItem>
-              {SELLERS.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" className="w-[220px] justify-between bg-card rounded-xl font-normal">
+                <span className="truncate">{sellerFilterLabel}</span>
+                <ChevronDown className="w-4 h-4 text-muted-foreground" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="start" className="w-[240px] p-2">
+              <label className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-left text-sm hover:bg-secondary">
+                <Checkbox checked={allSellersSelected} onCheckedChange={toggleAllSellers} aria-label="Selecionar todas vendedoras" />
+                <span>Todas vendedoras</span>
+              </label>
+              <div className="my-1 h-px bg-border" />
+              {SELLERS.map(s => (
+                <label key={s.id} className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-left text-sm hover:bg-secondary">
+                  <Checkbox checked={selectedSellerIds.includes(s.id)} onCheckedChange={() => toggleSeller(s.id)} aria-label={`Selecionar ${s.name}`} />
+                  <span>{s.name}</span>
+                </label>
+              ))}
+            </PopoverContent>
+          </Popover>
         </div>
 
         <div className="flex items-center gap-1 bg-card rounded-xl p-1 border border-border/60">
@@ -164,22 +273,22 @@ export default function Dashboard() {
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <MetricCard icon={<MessageCircle className="w-5 h-5" />} label="Total de atendimentos" value={String(totalAtendimentos)} delta="12.4%" accent="primary" />
-        <MetricCard icon={<Clock className="w-5 h-5" />} label="Tempo médio de resposta" value={`${Math.max(1, Math.round(3 / multiplier))}m ${Math.round(18 / multiplier)}s`} delta="8.1%" deltaPositive accent="info" />
-        <MetricCard icon={<AlertTriangle className="w-5 h-5" />} label="Sem resposta" value={String(unread)} delta="4.2%" deltaPositive={false} accent="destructive" />
-        <MetricCard icon={<ShoppingBag className="w-5 h-5" />} label="Vendas realizadas" value={formatBRL(revenue)} delta="18.7%" accent="success" />
-        <MetricCard icon={<TrendingUp className="w-5 h-5" />} label="Taxa de conversão" value={`${conversion}%`} delta="3.2%" accent="primary" />
-        <MetricCard icon={<Flame className="w-5 h-5" />} label="Clientes quentes" value={String(tempCounts.quente)} delta="11.0%" accent="destructive" />
-        <MetricCard icon={<Thermometer className="w-5 h-5" />} label="Clientes mornos" value={String(tempCounts.morno)} delta="2.4%" accent="warning" />
-        <MetricCard icon={<Snowflake className="w-5 h-5" />} label="Clientes frios" value={String(tempCounts.frio)} delta="6.0%" deltaPositive={false} accent="info" />
+        <MetricCard icon={<MessageCircle className="w-5 h-5" />} label="Total de atendimentos" value={String(totalAtendimentos)} delta={metricDeltas.atendimentos.percent} deltaValue={metricDeltas.atendimentos.value} deltaPositive={metricDeltas.atendimentos.positive} accent="primary" />
+        <MetricCard icon={<Clock className="w-5 h-5" />} label="Tempo médio de resposta" value={`${Math.max(1, Math.round(3 / multiplier))}m ${Math.round(18 / multiplier)}s`} delta={metricDeltas.resposta.percent} deltaValue={metricDeltas.resposta.value} deltaPositive={!metricDeltas.resposta.positive} accent="info" />
+        <MetricCard icon={<AlertTriangle className="w-5 h-5" />} label="Sem resposta" value={String(unread)} delta={metricDeltas.unread.percent} deltaValue={metricDeltas.unread.value} deltaPositive={false} accent="destructive" />
+        <MetricCard icon={<ShoppingBag className="w-5 h-5" />} label="Vendas realizadas" value={formatBRL(revenue)} delta={metricDeltas.revenue.percent} deltaValue={metricDeltas.revenue.value} deltaPositive={metricDeltas.revenue.positive} accent="success" />
+        <MetricCard icon={<TrendingUp className="w-5 h-5" />} label="Taxa de conversão" value={`${conversion}%`} delta={metricDeltas.conversion.percent} deltaValue={metricDeltas.conversion.value} deltaPositive={metricDeltas.conversion.positive} accent="primary" />
+        <MetricCard icon={<Flame className="w-5 h-5" />} label="Clientes quentes" value={String(tempCounts.quente)} delta={metricDeltas.quente.percent} deltaValue={metricDeltas.quente.value} deltaPositive={metricDeltas.quente.positive} accent="destructive" />
+        <MetricCard icon={<Thermometer className="w-5 h-5" />} label="Clientes mornos" value={String(tempCounts.morno)} delta={metricDeltas.morno.percent} deltaValue={metricDeltas.morno.value} deltaPositive={metricDeltas.morno.positive} accent="warning" />
+        <MetricCard icon={<Snowflake className="w-5 h-5" />} label="Clientes frios" value={String(tempCounts.frio)} delta={metricDeltas.frio.percent} deltaValue={metricDeltas.frio.value} deltaPositive={false} accent="info" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
         <div className="card-elevated p-6 lg:col-span-2">
           <div className="flex items-start justify-between mb-4">
             <div>
-              <h3 className="font-display font-bold text-base">Atendimentos por dia</h3>
-              <p className="text-xs text-muted-foreground">Evolução nos últimos {days} dias</p>
+              <h3 className="font-display font-bold text-base">Atendimentos por {period === "today" ? "hora" : "dia"}</h3>
+              <p className="text-xs text-muted-foreground">{period === "today" ? "Evolução de hoje, hora em hora" : `Evolução nos últimos ${days} dias`}</p>
             </div>
           </div>
           <ResponsiveContainer width="100%" height={260}>
@@ -191,7 +300,7 @@ export default function Dashboard() {
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-              <XAxis dataKey="day" stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} />
+              <XAxis dataKey="label" stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} />
               <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} />
               <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid hsl(var(--border))", background: "hsl(var(--card))" }} />
               <Area type="monotone" dataKey="atendimentos" stroke="hsl(var(--primary))" strokeWidth={2.5} fill="url(#g1)" />

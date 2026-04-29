@@ -6,22 +6,26 @@ import { Pencil, Trash2 } from "lucide-react";
 
 const formatBRL = (value: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
 
-export function KanbanColumn({ id, title, count, totalValue, onRename, onRemove, children }: {
+export function KanbanColumn({ id, title, count, color, totalValue, onRename, onRemove, children }: {
   id: string;
   title: string;
   count: number;
+  color: string;
   totalValue: number;
   onRename: () => void;
   onRemove: () => void;
   children: ReactNode;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id });
+  const showStatusDot = id === "fechado" || id === "perdido";
+
   return (
-    <div className="flex-shrink-0 w-72 flex flex-col">
+    <div className="flex h-full min-h-0 w-72 flex-shrink-0 flex-col">
       <div className="mb-3 rounded-xl border border-border/70 bg-card px-3 py-3 shadow-sm">
-        <div className="grid grid-cols-[1fr_52px] items-center gap-2">
-          <h3 className="min-w-0 text-center text-sm font-semibold leading-tight truncate">{title}</h3>
-          <div className="flex justify-end gap-1">
+        <div className="relative flex min-h-7 items-center justify-center px-14">
+          {showStatusDot && <div className={cn("absolute left-0 w-2 h-2 rounded-full", color)} />}
+          <h3 className="min-w-0 max-w-full text-center text-sm font-semibold leading-tight truncate">{title}</h3>
+          <div className="absolute right-0 flex justify-end gap-1">
             <Button type="button" size="icon" variant="ghost" className="h-6 w-6" title="Editar etapa" onClick={onRename}>
               <Pencil className="h-3.5 w-3.5" />
             </Button>
@@ -40,8 +44,9 @@ export function KanbanColumn({ id, title, count, totalValue, onRename, onRemove,
         </div>
       </div>
       <div ref={setNodeRef}
-        className={cn("flex-1 rounded-2xl p-2 space-y-2 min-h-[200px] transition-colors",
-          isOver ? "bg-secondary border-2 border-dashed border-muted-foreground/30" : "bg-secondary/40 border-2 border-dashed border-transparent")}>
+        data-kanban-column-scroll="true"
+        className={cn("min-h-[200px] flex-1 space-y-2 overflow-y-auto overscroll-contain rounded-2xl p-2 pr-1 transition-colors scrollbar-thin",
+          isOver ? "bg-primary-soft border-2 border-dashed border-primary" : "bg-secondary/40 border-2 border-dashed border-transparent")}>
         {children}
       </div>
     </div>

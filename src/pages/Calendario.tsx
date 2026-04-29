@@ -1,4 +1,4 @@
-import { FormEvent, useMemo, useState } from "react";
+import { DragEvent, FormEvent, useMemo, useState } from "react";
 import {
   addDays,
   addMonths,
@@ -32,7 +32,6 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Appointment, AppointmentType, useCRM } from "@/store/crm-store";
-import { SELLERS } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 
 type CalendarView = "day" | "week" | "month";
@@ -59,6 +58,8 @@ const minutesFromTime = (time: string) => {
   const [hours, minutes] = time.split(":").map(Number);
   return hours * 60 + minutes;
 };
+const timeFromMinutes = (totalMinutes: number) =>
+  `${String(Math.floor(totalMinutes / 60)).padStart(2, "0")}:${String(totalMinutes % 60).padStart(2, "0")}`;
 const formatDateTime = (appointment: Appointment) => `${format(fromDateKey(appointment.date), "dd/MM/yyyy")} às ${appointment.startTime}`;
 
 const emptyForm = (dealId: string, sellerId: string, date = toDateKey(new Date()), startTime = "09:00") => ({
@@ -73,12 +74,13 @@ const emptyForm = (dealId: string, sellerId: string, date = toDateKey(new Date()
 });
 
 export default function Calendario() {
-  const { appointments, addAppointment, updateAppointment, removeAppointment, deals } = useCRM();
+  const { appointments, addAppointment, updateAppointment, removeAppointment, deals, teamUsers } = useCRM();
   const [view, setView] = useState<CalendarView>("week");
   const [cursor, setCursor] = useState(new Date(2026, 3, 30));
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Appointment | null>(null);
-  const [form, setForm] = useState(() => emptyForm(deals[0]?.id || "", SELLERS[0]?.id || ""));
+  const [form, setForm] = useState(() => emptyForm(deals[0]?.id || "", teamUsers[0]?.id || ""));
+  const [draggingAppointmentId, setDraggingAppointmentId] = useState<string | null>(null);
 
   const sortedAppointments = useMemo(
     () => [...appointments].sort((a, b) => `${a.date}T${a.startTime}`.localeCompare(`${b.date}T${b.startTime}`)),
@@ -97,7 +99,7 @@ export default function Calendario() {
     const start = minutesFromTime(startTime);
     const end = `${String(Math.floor((start + 30) / 60)).padStart(2, "0")}:${String((start + 30) % 60).padStart(2, "0")}`;
     setEditing(null);
-    setForm({ ...emptyForm(deals[0]?.id || "", SELLERS[0]?.id || "", date, startTime), endTime: end });
+    setForm({ ...emptyForm(deals[0]?.id || "", teamUsers[0]?.id || "", date, startTime), endTime: end });
     setModalOpen(true);
   };
 
@@ -137,6 +139,35 @@ export default function Calendario() {
     setModalOpen(false);
   };
 
+  const startAppointmentDrag = (event: DragEvent<HTMLElement>, appointmentId: string) => {
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", appointmentId);
+    setDraggingAppointmentId(appointmentId);
+  };
+
+  const moveAppointment = (appointmentId: string, date: string, startTime?: string) => {
+    const appointment = appointments.find(item => item.id === appointmentId);
+    if (!appointment) return;
+
+    const patch: Partial<Appointment> = { date };
+    if (startTime) {
+      const duration = Math.max(15, minutesFromTime(appointment.endTime) - minutesFromTime(appointment.startTime));
+      patch.startTime = startTime;
+      patch.endTime = timeFromMinutes(minutesFromTime(startTime) + duration);
+    }
+
+    updateAppointment(appointment.id, patch);
+    setDraggingAppointmentId(null);
+    toast.success("Agendamento reagendado");
+  };
+
+  const handleAppointmentDrop = (event: DragEvent<HTMLElement>, date: string, startTime?: string) => {
+    event.preventDefault();
+    const appointmentId = event.dataTransfer.getData("text/plain") || draggingAppointmentId;
+    if (!appointmentId) return;
+    moveAppointment(appointmentId, date, startTime);
+  };
+
   const goPrevious = () => {
     if (view === "day") setCursor(prev => addDays(prev, -1));
     if (view === "week") setCursor(prev => subWeeks(prev, 1));
@@ -160,22 +191,31 @@ export default function Calendario() {
         const height = Math.max(((end - start) / 60) * HOUR_HEIGHT, 34);
         const typeStyle = APPOINTMENT_TYPES.find(type => type.value === appointment.type)?.className;
         const deal = deals.find(item => item.id === appointment.dealId);
+        const seller = teamUsers.find(item => item.id === appointment.sellerId);
 
         return (
           <button
             key={appointment.id}
             type="button"
+            draggable
+            onDragStart={event => startAppointmentDrag(event, appointment.id)}
+            onDragEnd={() => setDraggingAppointmentId(null)}
             onClick={event => {
               event.stopPropagation();
               openEdit(appointment);
             }}
-            className={cn("pointer-events-auto absolute z-10 w-[calc(100%-8px)] rounded-md border px-2 py-1 text-left text-[11px] shadow-sm transition hover:shadow-md", typeStyle)}
+            className={cn(
+              "pointer-events-auto absolute z-10 w-[calc(100%-8px)] cursor-grab rounded-md border px-2 py-1 text-left text-[11px] shadow-sm transition hover:shadow-md active:cursor-grabbing",
+              draggingAppointmentId === appointment.id && "opacity-60",
+              typeStyle,
+            )}
             style={{ top, height }}
             title={`${appointment.title} - ${appointment.startTime}`}
           >
             <div className="truncate font-semibold">{appointment.title}</div>
             <div className="truncate opacity-80">{appointment.startTime} - {appointment.endTime}</div>
             <div className="truncate opacity-80">{deal?.customer}</div>
+            <div className="truncate opacity-80">Vendedor: {seller?.name}</div>
           </button>
         );
       })}
@@ -239,6 +279,8 @@ export default function Calendario() {
                     key={day.toISOString()}
                     type="button"
                     onClick={() => openCreate(toDateKey(day), "09:00")}
+                    onDragOver={event => event.preventDefault()}
+                    onDrop={event => handleAppointmentDrop(event, toDateKey(day))}
                     className={cn(
                       "min-h-28 border-b border-r border-border/60 bg-card p-2 text-left transition hover:bg-secondary/50",
                       !isSameMonth(day, cursor) && "bg-secondary/30 text-muted-foreground",
@@ -250,18 +292,22 @@ export default function Calendario() {
                     <div className="space-y-1">
                       {dayAppointments.slice(0, 3).map(appointment => {
                         const typeStyle = APPOINTMENT_TYPES.find(type => type.value === appointment.type)?.className;
+                        const seller = teamUsers.find(item => item.id === appointment.sellerId);
                         return (
                           <span
                             key={appointment.id}
                             role="button"
                             tabIndex={0}
+                            draggable
+                            onDragStart={event => startAppointmentDrag(event, appointment.id)}
+                            onDragEnd={() => setDraggingAppointmentId(null)}
                             onClick={event => {
                               event.stopPropagation();
                               openEdit(appointment);
                             }}
-                            className={cn("block truncate rounded border px-2 py-1 text-[11px] font-medium", typeStyle)}
+                            className={cn("block cursor-grab truncate rounded border px-2 py-1 text-[11px] font-medium active:cursor-grabbing", draggingAppointmentId === appointment.id && "opacity-60", typeStyle)}
                           >
-                            {appointment.startTime} {appointment.title}
+                            {appointment.startTime} {appointment.title} - {seller?.name}
                           </span>
                         );
                       })}
@@ -274,37 +320,55 @@ export default function Calendario() {
           </div>
         ) : (
           <div className="overflow-x-auto rounded-xl border border-border/70 bg-card shadow-sm scrollbar-thin">
-            <div className={cn("grid min-w-[760px]", view === "day" ? "grid-cols-[72px_1fr]" : "grid-cols-[72px_repeat(7,minmax(120px,1fr))]")}>
-              <div className="border-b border-r border-border bg-secondary/40 p-3" />
-              {(view === "day" ? [cursor] : weekDays).map(day => (
-                <button
-                  key={day.toISOString()}
-                  type="button"
-                  onClick={() => setCursor(day)}
-                  className="border-b border-r border-border bg-secondary/40 p-3 text-left hover:bg-secondary"
-                >
-                  <div className="text-xs font-semibold uppercase text-muted-foreground">{format(day, "EEE", { locale: ptBR })}</div>
-                  <div className={cn("mt-1 inline-flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold", isSameDay(day, new Date()) && "bg-primary text-primary-foreground")}>
-                    {format(day, "d")}
-                  </div>
-                </button>
-              ))}
-              {HOURS.map(hour => (
-                <div key={hour} className="contents">
-                  <div className="h-16 border-r border-border px-3 pt-2 text-right text-xs font-medium text-muted-foreground">{String(hour).padStart(2, "0")}:00</div>
-                  {(view === "day" ? [cursor] : weekDays).map(day => (
-                    <button
-                      key={`${day.toISOString()}-${hour}`}
-                      type="button"
-                      onClick={() => openCreate(toDateKey(day), `${String(hour).padStart(2, "0")}:00`)}
-                      className="relative h-16 border-b border-r border-border/70 bg-card text-left hover:bg-secondary/40"
-                    />
+            <div className="min-w-[760px]">
+              <div
+                className="grid"
+                style={{ gridTemplateColumns: `72px repeat(${view === "day" ? 1 : 7}, minmax(120px, 1fr))` }}
+              >
+                <div className="border-b border-r border-border bg-secondary/40 p-3" />
+                {(view === "day" ? [cursor] : weekDays).map(day => (
+                  <button
+                    key={day.toISOString()}
+                    type="button"
+                    onClick={() => setCursor(day)}
+                    className="border-b border-r border-border bg-secondary/40 p-3 text-left hover:bg-secondary"
+                  >
+                    <div className="text-xs font-semibold uppercase text-muted-foreground">{format(day, "EEE", { locale: ptBR })}</div>
+                    <div className={cn("mt-1 inline-flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold", isSameDay(day, new Date()) && "bg-primary text-primary-foreground")}>
+                      {format(day, "d")}
+                    </div>
+                  </button>
+                ))}
+              </div>
+
+              <div
+                className="grid"
+                style={{ gridTemplateColumns: `72px repeat(${view === "day" ? 1 : 7}, minmax(120px, 1fr))` }}
+              >
+                <div className="border-r border-border">
+                  {HOURS.map(hour => (
+                    <div key={hour} className="h-16 border-b border-border/70 px-3 pt-2 text-right text-xs font-medium text-muted-foreground">
+                      {String(hour).padStart(2, "0")}:00
+                    </div>
                   ))}
                 </div>
-              ))}
-              <div className="pointer-events-none col-start-2 col-end-[-1] row-start-2 row-end-[-1] grid" style={{ gridTemplateColumns: `repeat(${view === "day" ? 1 : 7}, minmax(0, 1fr))` }}>
+
                 {(view === "day" ? [cursor] : weekDays).map(day => (
-                  <div key={day.toISOString()} className="pointer-events-none relative" style={{ height: HOURS.length * HOUR_HEIGHT }}>
+                  <div
+                    key={day.toISOString()}
+                    className="relative border-r border-border/70"
+                    style={{ height: HOURS.length * HOUR_HEIGHT }}
+                  >
+                    {HOURS.map(hour => (
+                    <button
+                      key={hour}
+                      type="button"
+                      onClick={() => openCreate(toDateKey(day), `${String(hour).padStart(2, "0")}:00`)}
+                      onDragOver={event => event.preventDefault()}
+                      onDrop={event => handleAppointmentDrop(event, toDateKey(day), `${String(hour).padStart(2, "0")}:00`)}
+                      className="block h-16 w-full border-b border-border/70 bg-card text-left hover:bg-secondary/40"
+                    />
+                  ))}
                     {renderTimedEvents(day)}
                   </div>
                 ))}
@@ -316,7 +380,7 @@ export default function Calendario() {
         <div className="grid gap-3 lg:grid-cols-3">
           {sortedAppointments.slice(0, 6).map(appointment => {
             const deal = deals.find(item => item.id === appointment.dealId);
-            const seller = SELLERS.find(item => item.id === appointment.sellerId);
+            const seller = teamUsers.find(item => item.id === appointment.sellerId);
             return (
               <button
                 key={appointment.id}
@@ -375,7 +439,7 @@ export default function Calendario() {
                 <Select value={form.sellerId} onValueChange={sellerId => setForm(prev => ({ ...prev, sellerId }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {SELLERS.map(seller => <SelectItem key={seller.id} value={seller.id}>{seller.name}</SelectItem>)}
+                    {teamUsers.filter(user => user.active).map(seller => <SelectItem key={seller.id} value={seller.id}>{seller.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>

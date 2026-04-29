@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import { Deal, DealStage, INITIAL_DEALS, INITIAL_AGENTS, Agent, ALL_TAGS, STAGES, Stage } from "@/lib/mock-data";
+import { Deal, DealStage, INITIAL_DEALS, INITIAL_AGENTS, Agent, ALL_TAGS, STAGES, Stage, SELLERS } from "@/lib/mock-data";
 
 interface FinishedDeal {
   dealId: string;
@@ -28,6 +28,26 @@ export interface Appointment {
   type: AppointmentType;
 }
 
+export type TeamUser = {
+  id: string;
+  name: string;
+  avatar: string;
+  photoUrl?: string;
+  email: string;
+  phone?: string;
+  role: string;
+  active: boolean;
+};
+
+export type AccountProfile = {
+  name: string;
+  email: string;
+  phone: string;
+  role: string;
+  avatar: string;
+  photoUrl?: string;
+};
+
 interface CRMCtx {
   deals: Deal[];
   setDeals: React.Dispatch<React.SetStateAction<Deal[]>>;
@@ -50,6 +70,10 @@ interface CRMCtx {
   setAgents: React.Dispatch<React.SetStateAction<Agent[]>>;
   tags: string[];
   setTags: React.Dispatch<React.SetStateAction<string[]>>;
+  teamUsers: TeamUser[];
+  setTeamUsers: React.Dispatch<React.SetStateAction<TeamUser[]>>;
+  accountProfile: AccountProfile;
+  setAccountProfile: React.Dispatch<React.SetStateAction<AccountProfile>>;
 }
 
 const Ctx = createContext<CRMCtx | null>(null);
@@ -88,6 +112,23 @@ const INITIAL_APPOINTMENTS: Appointment[] = [
   },
 ];
 
+const initialTeamUsers: TeamUser[] = SELLERS.map((seller, index) => ({
+  ...seller,
+  email: `${seller.name.toLowerCase().replace(" ", ".")}@empresa.com`,
+  phone: index === 0 ? "+55 11 98765-4321" : "",
+  role: index === 0 ? "Administrador" : "Vendedora",
+  active: true,
+}));
+
+const initialAccountProfile: AccountProfile = {
+  name: initialTeamUsers[0].name,
+  email: initialTeamUsers[0].email,
+  phone: initialTeamUsers[0].phone || "",
+  role: initialTeamUsers[0].role,
+  avatar: initialTeamUsers[0].avatar,
+  photoUrl: initialTeamUsers[0].photoUrl,
+};
+
 export function CRMProvider({ children }: { children: ReactNode }) {
   const [deals, setDeals] = useState<Deal[]>(() => loadStored("crm-deals", INITIAL_DEALS));
   const [finished, setFinished] = useState<FinishedDeal[]>([]);
@@ -95,6 +136,8 @@ export function CRMProvider({ children }: { children: ReactNode }) {
   const [tags, setTags] = useState<string[]>(ALL_TAGS);
   const [stages, setStages] = useState<Stage[]>(() => loadStored("crm-stages", STAGES));
   const [appointments, setAppointments] = useState<Appointment[]>(() => loadStored("crm-appointments", INITIAL_APPOINTMENTS));
+  const [teamUsers, setTeamUsers] = useState<TeamUser[]>(() => loadStored("crm-team-users", initialTeamUsers));
+  const [accountProfile, setAccountProfile] = useState<AccountProfile>(() => loadStored("crm-account-profile", initialAccountProfile));
 
   useEffect(() => {
     window.localStorage.setItem("crm-deals", JSON.stringify(deals));
@@ -107,6 +150,14 @@ export function CRMProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     window.localStorage.setItem("crm-appointments", JSON.stringify(appointments));
   }, [appointments]);
+
+  useEffect(() => {
+    window.localStorage.setItem("crm-team-users", JSON.stringify(teamUsers));
+  }, [teamUsers]);
+
+  useEffect(() => {
+    window.localStorage.setItem("crm-account-profile", JSON.stringify(accountProfile));
+  }, [accountProfile]);
 
   const addDeal = (deal: Deal) => setDeals(prev => [deal, ...prev]);
   const moveDeal = (id: string, stage: DealStage) =>
@@ -183,7 +234,7 @@ export function CRMProvider({ children }: { children: ReactNode }) {
     setAppointments(prev => prev.filter(appointment => appointment.id !== id));
 
   return (
-    <Ctx.Provider value={{ deals, setDeals, addDeal, moveDeal, updateDeal, stages, addStage, updateStage, moveStage, reorderStage, removeStage, appointments, addAppointment, updateAppointment, removeAppointment, finished, finishDeal, agents, setAgents, tags, setTags }}>
+    <Ctx.Provider value={{ deals, setDeals, addDeal, moveDeal, updateDeal, stages, addStage, updateStage, moveStage, reorderStage, removeStage, appointments, addAppointment, updateAppointment, removeAppointment, finished, finishDeal, agents, setAgents, tags, setTags, teamUsers, setTeamUsers, accountProfile, setAccountProfile }}>
       {children}
     </Ctx.Provider>
   );

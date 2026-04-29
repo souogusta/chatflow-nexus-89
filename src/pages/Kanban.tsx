@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState, WheelEvent } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { DndContext, DragEndEvent, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { useCRM } from "@/store/crm-store";
@@ -15,6 +15,7 @@ import { Plus, Settings2 } from "lucide-react";
 
 export default function Kanban() {
   const { deals, moveDeal, stages, removeStage, appointments } = useCRM();
+  const boardRef = useRef<HTMLDivElement>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const [selected, setSelected] = useState<Deal | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -70,6 +71,21 @@ export default function Kanban() {
     toast.success(`Movido para ${stages.find(s => s.id === newStage)?.title}`);
   };
 
+  const handleBoardWheel = (event: WheelEvent<HTMLDivElement>) => {
+    if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
+
+    const columnScroll = (event.target as HTMLElement).closest<HTMLElement>("[data-kanban-column-scroll='true']");
+    if (columnScroll) {
+      return;
+    }
+
+    const board = boardRef.current;
+    if (!board) return;
+
+    event.preventDefault();
+    board.scrollLeft += event.deltaY;
+  };
+
   return (
     <AppLayout title="Kanban Comercial" subtitle="Arraste os cards entre as colunas">
       <div className="flex items-center justify-between mb-4">
@@ -85,12 +101,17 @@ export default function Kanban() {
       </div>
 
       <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-        <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-thin -mx-6 lg:-mx-8 px-6 lg:px-8">
+        <div
+          ref={boardRef}
+          onWheel={handleBoardWheel}
+          className="flex h-[calc(100vh-13.5rem)] min-h-[420px] gap-4 overflow-x-auto overflow-y-hidden overscroll-x-contain pb-4 scrollbar-thin -mx-6 lg:-mx-8 px-6 lg:px-8"
+        >
           {stages.map(s => (
             <KanbanColumn
               key={s.id}
               id={s.id}
               title={s.title}
+              color={s.color}
               count={grouped.get(s.id)?.length || 0}
               totalValue={(grouped.get(s.id) || []).reduce((sum, deal) => sum + (deal.estimatedValue || 0), 0)}
               onRename={() => setStagesOpen(true)}

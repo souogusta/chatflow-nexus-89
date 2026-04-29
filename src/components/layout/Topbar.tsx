@@ -3,16 +3,15 @@ import { useNavigate } from "react-router-dom";
 import { Search, Bell, Filter, MessageCircle, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { useCRM } from "@/store/crm-store";
-import { SELLERS } from "@/lib/mock-data";
 
 export function Topbar({ title, subtitle }: { title: string; subtitle?: string }) {
   const navigate = useNavigate();
-  const { deals, stages } = useCRM();
+  const { deals, stages, accountProfile, teamUsers } = useCRM();
   const [search, setSearch] = useState("");
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -70,11 +69,12 @@ export function Topbar({ title, subtitle }: { title: string; subtitle?: string }
 
           <div className="flex items-center gap-3 pl-3 border-l border-border">
             <div className="hidden sm:block text-right">
-              <div className="text-sm font-semibold leading-tight">Ana Paula</div>
-              <div className="text-xs text-muted-foreground">Administradora</div>
+              <div className="text-sm font-semibold leading-tight">{accountProfile.name}</div>
+              <div className="text-xs text-muted-foreground">{accountProfile.role}</div>
             </div>
             <Avatar className="w-9 h-9 ring-2 ring-primary/20">
-              <AvatarFallback className="bg-gradient-primary text-primary-foreground font-semibold text-sm">AP</AvatarFallback>
+              <AvatarImage src={accountProfile.photoUrl} alt={accountProfile.name} />
+              <AvatarFallback className="bg-gradient-primary text-primary-foreground font-semibold text-sm">{accountProfile.avatar}</AvatarFallback>
             </Avatar>
           </div>
         </div>
@@ -124,7 +124,7 @@ export function Topbar({ title, subtitle }: { title: string; subtitle?: string }
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todas</SelectItem>
-                  {SELLERS.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                  {teamUsers.filter(user => user.active).map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>

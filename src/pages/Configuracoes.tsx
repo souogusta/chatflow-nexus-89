@@ -1,14 +1,14 @@
-import { useState } from "react";
+import { ChangeEvent, useRef, useState } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { SELLERS } from "@/lib/mock-data";
+import { TeamUser, useCRM } from "@/store/crm-store";
 import { Plus, Trash2, Pencil, Check, X, MessageSquare, Bot, Webhook, FileSpreadsheet, Cable } from "lucide-react";
 import { toast } from "sonner";
 
@@ -33,13 +33,18 @@ const INTEGRATIONS = [
   { name: "API externa", desc: "Integre com seu ERP/CRM", icon: Cable, connected: false },
 ];
 
-type TeamUser = {
-  id: string;
-  name: string;
-  avatar: string;
-  email: string;
-  role: string;
-  active: boolean;
+const initialsFromName = (name: string) =>
+  name.split(" ").filter(Boolean).map(part => part[0]).join("").slice(0, 2).toUpperCase();
+
+const readImageFile = (file: File, onLoad: (dataUrl: string) => void) => {
+  if (!file.type.startsWith("image/")) {
+    toast.error("Selecione uma imagem");
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = () => onLoad(String(reader.result));
+  reader.readAsDataURL(file);
 };
 
 const emptyUser: TeamUser = {
@@ -47,22 +52,18 @@ const emptyUser: TeamUser = {
   name: "",
   avatar: "",
   email: "",
+  phone: "",
   role: "Vendedora",
   active: true,
 };
 
 export default function Configuracoes() {
-  const [users, setUsers] = useState<TeamUser[]>(
-    SELLERS.map((s, i) => ({
-      ...s,
-      email: `${s.name.toLowerCase().replace(" ", ".")}@empresa.com`,
-      role: i === 0 ? "Administrador" : "Vendedora",
-      active: true,
-    }))
-  );
+  const { teamUsers: users, setTeamUsers: setUsers, accountProfile, setAccountProfile } = useCRM();
   const [perms, setPerms] = useState(DEFAULT_PERMS);
   const [userDialogOpen, setUserDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<TeamUser>(emptyUser);
+  const accountPhotoInputRef = useRef<HTMLInputElement>(null);
+  const userPhotoInputRef = useRef<HTMLInputElement>(null);
 
   const openNewUser = () => {
     setEditingUser(emptyUser);
@@ -77,15 +78,63 @@ export default function Configuracoes() {
   const saveUser = () => {
     if (!editingUser.name.trim()) return toast.error("Informe o nome do usuário");
     if (!editingUser.email.trim()) return toast.error("Informe o e-mail do usuário");
-    const avatar = editingUser.avatar.trim() || editingUser.name.split(" ").map(part => part[0]).join("").slice(0, 2).toUpperCase();
+    const avatar = editingUser.avatar.trim() || initialsFromName(editingUser.name);
     if (editingUser.id === "new") {
       setUsers(prev => [...prev, { ...editingUser, id: `u${Date.now()}`, avatar }]);
       toast.success("Usuário criado");
     } else {
-      setUsers(prev => prev.map(user => user.id === editingUser.id ? { ...editingUser, avatar } : user));
+      const updatedUser = { ...editingUser, avatar };
+      setUsers(prev => prev.map(user => user.id === editingUser.id ? updatedUser : user));
+      if (editingUser.id === "s1") {
+        setAccountProfile(prev => ({
+          ...prev,
+          name: updatedUser.name,
+          email: updatedUser.email,
+          phone: updatedUser.phone || prev.phone,
+          role: updatedUser.role,
+          avatar: updatedUser.avatar,
+          photoUrl: updatedUser.photoUrl,
+        }));
+      }
       toast.success("Usuário atualizado");
     }
     setUserDialogOpen(false);
+  };
+
+  const saveAccount = () => {
+    const avatar = initialsFromName(accountProfile.name);
+    const nextProfile = { ...accountProfile, avatar };
+    setAccountProfile(nextProfile);
+    setUsers(prev => prev.map(user => user.id === "s1"
+      ? {
+        ...user,
+        name: nextProfile.name,
+        email: nextProfile.email,
+        phone: nextProfile.phone,
+        role: nextProfile.role,
+        avatar: nextProfile.avatar,
+        photoUrl: nextProfile.photoUrl,
+      }
+      : user));
+    toast.success("Alterações salvas!");
+  };
+
+  const updateAccountPhoto = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    readImageFile(file, photoUrl => {
+      setAccountProfile(prev => ({ ...prev, photoUrl }));
+      setUsers(prev => prev.map(user => user.id === "s1" ? { ...user, photoUrl } : user));
+      toast.success("Foto atualizada");
+    });
+    event.target.value = "";
+  };
+
+  const updateEditingUserPhoto = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    readImageFile(file, photoUrl => setEditingUser(prev => ({ ...prev, photoUrl })));
+    event.target.value = "";
   };
 
   const removeUser = (id: string) => {
@@ -107,16 +156,20 @@ export default function Configuracoes() {
 
         <TabsContent value="account" className="card-elevated p-6 mt-4 max-w-2xl">
           <div className="flex items-center gap-4 mb-6">
-            <Avatar className="w-20 h-20"><AvatarFallback className="bg-gradient-primary text-primary-foreground text-xl font-bold">AP</AvatarFallback></Avatar>
-            <Button variant="outline">Alterar foto</Button>
+            <Avatar className="w-20 h-20">
+              <AvatarImage src={accountProfile.photoUrl} alt={accountProfile.name} />
+              <AvatarFallback className="bg-gradient-primary text-primary-foreground text-xl font-bold">{accountProfile.avatar}</AvatarFallback>
+            </Avatar>
+            <input ref={accountPhotoInputRef} type="file" accept="image/*" className="hidden" onChange={updateAccountPhoto} />
+            <Button variant="outline" onClick={() => accountPhotoInputRef.current?.click()}>Alterar foto</Button>
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <div><Label>Nome</Label><Input defaultValue="Ana Paula" /></div>
-            <div><Label>E-mail</Label><Input defaultValue="ana@empresa.com" /></div>
-            <div><Label>Telefone</Label><Input defaultValue="+55 11 98765-4321" /></div>
-            <div><Label>Cargo</Label><Input defaultValue="Administradora" disabled /></div>
+            <div><Label>Nome</Label><Input value={accountProfile.name} onChange={event => setAccountProfile({ ...accountProfile, name: event.target.value, avatar: accountProfile.avatar || initialsFromName(event.target.value) })} /></div>
+            <div><Label>E-mail</Label><Input value={accountProfile.email} onChange={event => setAccountProfile({ ...accountProfile, email: event.target.value })} /></div>
+            <div><Label>Telefone</Label><Input value={accountProfile.phone} onChange={event => setAccountProfile({ ...accountProfile, phone: event.target.value })} /></div>
+            <div><Label>Cargo</Label><Input value={accountProfile.role} onChange={event => setAccountProfile({ ...accountProfile, role: event.target.value })} /></div>
           </div>
-          <Button onClick={() => toast.success("Alterações salvas!")} className="mt-6 bg-gradient-primary">Salvar alterações</Button>
+          <Button onClick={saveAccount} className="mt-6 bg-gradient-primary">Salvar alterações</Button>
         </TabsContent>
 
         <TabsContent value="security" className="card-elevated p-6 mt-4 max-w-xl space-y-4">
@@ -143,7 +196,7 @@ export default function Configuracoes() {
             <tbody>
               {users.map(u => (
                 <tr key={u.id} className="border-b border-border/40">
-                  <td className="py-3"><div className="flex items-center gap-2"><Avatar className="w-8 h-8"><AvatarFallback className="bg-primary-soft text-primary text-xs font-semibold">{u.avatar}</AvatarFallback></Avatar>{u.name}</div></td>
+                  <td className="py-3"><div className="flex items-center gap-2"><Avatar className="w-8 h-8"><AvatarImage src={u.photoUrl} alt={u.name} /><AvatarFallback className="bg-primary-soft text-primary text-xs font-semibold">{u.avatar}</AvatarFallback></Avatar>{u.name}</div></td>
                   <td className="py-3 text-muted-foreground">{u.email}</td>
                   <td className="py-3">{u.role}</td>
                   <td className="py-3"><span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${u.active ? "bg-success-soft text-success" : "bg-muted text-muted-foreground"}`}>{u.active ? "Ativo" : "Inativo"}</span></td>
@@ -214,6 +267,14 @@ export default function Configuracoes() {
           <DialogHeader>
             <DialogTitle className="font-display">{editingUser.id === "new" ? "Novo usuário" : "Editar usuário"}</DialogTitle>
           </DialogHeader>
+          <div className="flex items-center gap-3">
+            <Avatar className="h-14 w-14">
+              <AvatarImage src={editingUser.photoUrl} alt={editingUser.name} />
+              <AvatarFallback className="bg-primary-soft text-primary font-semibold">{editingUser.avatar || initialsFromName(editingUser.name)}</AvatarFallback>
+            </Avatar>
+            <input ref={userPhotoInputRef} type="file" accept="image/*" className="hidden" onChange={updateEditingUserPhoto} />
+            <Button type="button" variant="outline" onClick={() => userPhotoInputRef.current?.click()}>Alterar foto</Button>
+          </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <Label htmlFor="userName">Nome *</Label>
@@ -222,6 +283,10 @@ export default function Configuracoes() {
             <div>
               <Label htmlFor="userEmail">E-mail *</Label>
               <Input id="userEmail" type="email" value={editingUser.email} onChange={event => setEditingUser({ ...editingUser, email: event.target.value })} />
+            </div>
+            <div>
+              <Label htmlFor="userPhone">Telefone</Label>
+              <Input id="userPhone" value={editingUser.phone || ""} onChange={event => setEditingUser({ ...editingUser, phone: event.target.value })} />
             </div>
             <div>
               <Label>Cargo</Label>

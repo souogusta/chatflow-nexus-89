@@ -23,6 +23,7 @@ export interface Deal {
   phone: string;
   avatar?: string;
   lastMessage: string;
+  interest?: string;
   lastInteraction: string;
   sellerId: string;
   temperature: Temperature;

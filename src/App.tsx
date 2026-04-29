@@ -7,6 +7,7 @@ import { CRMProvider } from "@/store/crm-store";
 import Dashboard from "./pages/Dashboard";
 import Kanban from "./pages/Kanban";
 import Conversas from "./pages/Conversas";
+import Calendario from "./pages/Calendario";
 import Agentes from "./pages/Agentes";
 import Relatorios from "./pages/Relatorios";
 import Configuracoes from "./pages/Configuracoes";
@@ -25,6 +26,7 @@ const App = () => (
             <Route path="/" element={<Dashboard />} />
             <Route path="/kanban" element={<Kanban />} />
             <Route path="/conversas" element={<Conversas />} />
+            <Route path="/calendario" element={<Calendario />} />
             <Route path="/agentes" element={<Agentes />} />
             <Route path="/relatorios" element={<Relatorios />} />
             <Route path="/configuracoes" element={<Configuracoes />} />

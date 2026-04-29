@@ -1,19 +1,24 @@
 import { useDraggable } from "@dnd-kit/core";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Deal, SELLERS } from "@/lib/mock-data";
-import { ClientTemperatureBadge, TagBadge } from "@/components/shared/Badges";
-import { Clock } from "lucide-react";
+import { CalendarClock, Clock } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { Appointment } from "@/store/crm-store";
 import { cn } from "@/lib/utils";
 
-const temperatureCardStyles = {
-  quente: "border-hot/35 bg-hot-soft/80 hover:border-hot/50",
-  morno: "border-warm/35 bg-warm-soft/80 hover:border-warm/50",
-  frio: "border-cold/35 bg-cold-soft/80 hover:border-cold/50",
+const formatAppointment = (appointment: Appointment) => {
+  const [year, month, day] = appointment.date.split("-");
+  return `${day}/${month}/${year} às ${appointment.startTime}`;
 };
 
-export function KanbanCard({ deal, onClick }: { deal: Deal; onClick: () => void }) {
+const temperatureLabel = {
+  quente: "Quente",
+  morno: "Morno",
+  frio: "Frio",
+};
+
+export function KanbanCard({ deal, nextAppointment, onClick }: { deal: Deal; nextAppointment?: Appointment; onClick: () => void }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: deal.id });
   const seller = SELLERS.find(s => s.id === deal.sellerId);
 
@@ -23,8 +28,7 @@ export function KanbanCard({ deal, onClick }: { deal: Deal; onClick: () => void 
     <div ref={setNodeRef} style={style} {...listeners} {...attributes}
       onClick={onClick}
       className={cn(
-        "group rounded-xl border p-3 shadow-sm hover:shadow-soft cursor-pointer transition-all",
-        temperatureCardStyles[deal.temperature],
+        "group rounded-xl border border-border/70 bg-card p-3 shadow-sm hover:border-primary/25 hover:shadow-soft cursor-pointer transition-all",
         isDragging ? "opacity-50 rotate-2" : "",
       )}>
       <div className="flex items-start justify-between gap-2 mb-2">
@@ -34,30 +38,40 @@ export function KanbanCard({ deal, onClick }: { deal: Deal; onClick: () => void 
             <div className="text-xs font-bold text-success mt-0.5">R$ {deal.estimatedValue.toLocaleString("pt-BR")}</div>
           ) : null}
         </div>
-        {deal.unread && <span className="w-2 h-2 rounded-full bg-destructive shrink-0 mt-1.5" />}
+        {deal.unread && <span className="shrink-0 rounded-md border border-border bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">Pendente</span>}
       </div>
 
       <p className="text-xs text-muted-foreground line-clamp-2 mb-2">{deal.lastMessage}</p>
 
       {deal.tags.length > 0 && (
         <div className="flex flex-wrap gap-1 mb-2">
-          {deal.tags.slice(0, 2).map(t => <TagBadge key={t} label={t} />)}
+          {deal.tags.slice(0, 2).map(t => (
+            <span key={t} className="rounded-md border border-border bg-secondary/60 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+              {t}
+            </span>
+          ))}
           {deal.tags.length > 2 && <span className="text-[10px] text-muted-foreground">+{deal.tags.length - 2}</span>}
         </div>
       )}
 
       <div className="flex items-center justify-between gap-2 pt-2 border-t border-border/40">
         <div className="flex items-center gap-1.5 min-w-0">
-          <Avatar className="w-5 h-5"><AvatarFallback className="bg-primary-soft text-primary text-[9px] font-semibold">{seller?.avatar}</AvatarFallback></Avatar>
+          <Avatar className="w-5 h-5"><AvatarFallback className="bg-secondary text-muted-foreground text-[9px] font-semibold">{seller?.avatar}</AvatarFallback></Avatar>
           <span className="text-[10px] text-muted-foreground truncate">{seller?.name.split(" ")[0]}</span>
         </div>
-        <ClientTemperatureBadge temp={deal.temperature} />
+        <span className="text-[10px] text-muted-foreground">Status: {temperatureLabel[deal.temperature]}</span>
       </div>
 
       <div className="flex items-center gap-1 text-[10px] text-muted-foreground mt-1.5">
         <Clock className="w-2.5 h-2.5" />
         {formatDistanceToNow(new Date(deal.lastInteraction), { locale: ptBR, addSuffix: true })}
       </div>
+      {nextAppointment && (
+        <div className="mt-1.5 flex items-center gap-1 rounded-md bg-secondary/70 px-2 py-1 text-[10px] font-medium text-foreground">
+          <CalendarClock className="h-3 w-3 text-muted-foreground" />
+          <span className="truncate">Próximo contato: {formatAppointment(nextAppointment)}</span>
+        </div>
+      )}
     </div>
   );
 }

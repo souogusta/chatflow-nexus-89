@@ -1,11 +1,12 @@
 import { NavLink } from "react-router-dom";
-import { LayoutDashboard, Kanban, MessageSquare, Bot, BarChart3, Settings, Sparkles } from "lucide-react";
+import { LayoutDashboard, Kanban, MessageSquare, CalendarDays, Bot, BarChart3, Settings, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const items = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
   { to: "/kanban", label: "Kanban", icon: Kanban },
   { to: "/conversas", label: "Conversas", icon: MessageSquare },
+  { to: "/calendario", label: "Calendário", icon: CalendarDays },
   { to: "/agentes", label: "Agentes", icon: Bot },
   { to: "/relatorios", label: "Relatórios", icon: BarChart3 },
   { to: "/configuracoes", label: "Configurações", icon: Settings },

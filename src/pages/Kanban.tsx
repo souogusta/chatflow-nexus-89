@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Plus, Settings2 } from "lucide-react";
 
 export default function Kanban() {
-  const { deals, moveDeal, stages, removeStage } = useCRM();
+  const { deals, moveDeal, stages, removeStage, appointments } = useCRM();
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const [selected, setSelected] = useState<Deal | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -29,6 +29,18 @@ export default function Kanban() {
     deals.forEach(d => map.get(d.stage)?.push(d));
     return map;
   }, [deals, stages]);
+
+  const nextAppointmentByDeal = useMemo(() => {
+    const now = new Date();
+    const map = new Map<string, typeof appointments[number]>();
+    appointments
+      .filter(appointment => new Date(`${appointment.date}T${appointment.startTime}`) >= now)
+      .sort((a, b) => `${a.date}T${a.startTime}`.localeCompare(`${b.date}T${b.startTime}`))
+      .forEach(appointment => {
+        if (!map.has(appointment.dealId)) map.set(appointment.dealId, appointment);
+      });
+    return map;
+  }, [appointments]);
 
   const handleRemoveStage = (id: string, title: string, count: number) => {
     if (id === "fechado" || id === "perdido") {
@@ -79,14 +91,13 @@ export default function Kanban() {
               key={s.id}
               id={s.id}
               title={s.title}
-              color={s.color}
               count={grouped.get(s.id)?.length || 0}
               totalValue={(grouped.get(s.id) || []).reduce((sum, deal) => sum + (deal.estimatedValue || 0), 0)}
               onRename={() => setStagesOpen(true)}
               onRemove={() => handleRemoveStage(s.id, s.title, grouped.get(s.id)?.length || 0)}
             >
               {grouped.get(s.id)?.map(d => (
-                <KanbanCard key={d.id} deal={d} onClick={() => { setSelected(d); setSheetOpen(true); }} />
+                <KanbanCard key={d.id} deal={d} nextAppointment={nextAppointmentByDeal.get(d.id)} onClick={() => { setSelected(d); setSheetOpen(true); }} />
               ))}
             </KanbanColumn>
           ))}

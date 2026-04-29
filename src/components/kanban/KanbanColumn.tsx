@@ -6,11 +6,10 @@ import { Pencil, Trash2 } from "lucide-react";
 
 const formatBRL = (value: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
 
-export function KanbanColumn({ id, title, count, color, totalValue, onRename, onRemove, children }: {
+export function KanbanColumn({ id, title, count, totalValue, onRename, onRemove, children }: {
   id: string;
   title: string;
   count: number;
-  color: string;
   totalValue: number;
   onRename: () => void;
   onRemove: () => void;
@@ -20,8 +19,7 @@ export function KanbanColumn({ id, title, count, color, totalValue, onRename, on
   return (
     <div className="flex-shrink-0 w-72 flex flex-col">
       <div className="mb-3 rounded-xl border border-border/70 bg-card px-3 py-3 shadow-sm">
-        <div className="grid grid-cols-[24px_1fr_52px] items-center gap-2">
-          <div className={cn("w-2 h-2 rounded-full justify-self-center", color)} />
+        <div className="grid grid-cols-[1fr_52px] items-center gap-2">
           <h3 className="min-w-0 text-center text-sm font-semibold leading-tight truncate">{title}</h3>
           <div className="flex justify-end gap-1">
             <Button type="button" size="icon" variant="ghost" className="h-6 w-6" title="Editar etapa" onClick={onRename}>
@@ -43,7 +41,7 @@ export function KanbanColumn({ id, title, count, color, totalValue, onRename, on
       </div>
       <div ref={setNodeRef}
         className={cn("flex-1 rounded-2xl p-2 space-y-2 min-h-[200px] transition-colors",
-          isOver ? "bg-primary-soft border-2 border-dashed border-primary" : "bg-secondary/40 border-2 border-dashed border-transparent")}>
+          isOver ? "bg-secondary border-2 border-dashed border-muted-foreground/30" : "bg-secondary/40 border-2 border-dashed border-transparent")}>
         {children}
       </div>
     </div>

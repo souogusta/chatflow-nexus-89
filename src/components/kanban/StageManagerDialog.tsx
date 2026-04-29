@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { toast } from "sonner";
-import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
+import { closestCenter, DndContext, DragEndEvent, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
+import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { GripVertical, Plus, Trash2 } from "lucide-react";
 import { useCRM } from "@/store/crm-store";
-import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -14,29 +16,74 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Stage } from "@/lib/mock-data";
 
-const STAGE_COLORS = [
-  { label: "Roxo", value: "bg-primary" },
-  { label: "Azul", value: "bg-info" },
-  { label: "Verde", value: "bg-success" },
-  { label: "Amarelo", value: "bg-warning" },
-  { label: "Vermelho", value: "bg-hot" },
-  { label: "Cinza", value: "bg-muted-foreground" },
-];
+function SortableStageItem({
+  stage,
+  onUpdate,
+  onRemove,
+}: {
+  stage: Stage;
+  onUpdate: (title: string) => void;
+  onRemove: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: stage.id });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`grid gap-2 rounded-lg border border-border/70 bg-card p-3 shadow-sm sm:grid-cols-[auto_1fr_auto] sm:items-center ${isDragging ? "z-10 opacity-70 shadow-lg" : ""}`}
+    >
+      <button
+        type="button"
+        className="flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground cursor-grab active:cursor-grabbing"
+        title="Arrastar etapa"
+        aria-label="Arrastar etapa"
+        {...attributes}
+        {...listeners}
+      >
+        <GripVertical className="h-4 w-4" />
+      </button>
+      <Input
+        value={stage.title}
+        onChange={event => onUpdate(event.target.value)}
+        onBlur={() => toast.success("Etapa atualizada")}
+        className="h-9 bg-background"
+      />
+      <div className="flex justify-end">
+        <Button type="button" size="icon" variant="ghost" className="text-muted-foreground hover:text-destructive" onClick={onRemove} title="Remover etapa">
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 export function StageManagerDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
-  const { stages, deals, addStage, updateStage, moveStage, removeStage } = useCRM();
+  const { stages, deals, addStage, updateStage, reorderStage, removeStage } = useCRM();
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
   const [newTitle, setNewTitle] = useState("");
-  const [newColor, setNewColor] = useState(STAGE_COLORS[0].value);
 
   const handleAdd = () => {
     const title = newTitle.trim();
     if (!title) return;
 
-    addStage(title, newColor);
+    addStage(title);
     setNewTitle("");
-    setNewColor(STAGE_COLORS[0].value);
     toast.success("Etapa adicionada");
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const activeId = String(event.active.id);
+    const overId = event.over?.id ? String(event.over.id) : "";
+    if (!overId || activeId === overId) return;
+    reorderStage(activeId, overId);
+    toast.success("Ordem das etapas atualizada");
   };
 
   const handleRemove = (id: string, title: string) => {
@@ -60,11 +107,11 @@ export function StageManagerDialog({ open, onOpenChange }: { open: boolean; onOp
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>Organizar etapas</DialogTitle>
-          <DialogDescription>Edite nomes, ordem e cor das colunas do Kanban.</DialogDescription>
+          <DialogDescription>Arraste as etapas para reorganizar o funil e edite os nomes quando precisar.</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3">
-          <div className="grid gap-2 rounded-lg border border-border/70 bg-secondary/40 p-3 sm:grid-cols-[1fr_auto_auto] sm:items-end">
+          <div className="grid gap-2 rounded-lg border border-border/70 bg-secondary/40 p-3 sm:grid-cols-[1fr_auto] sm:items-end">
             <div>
               <Label htmlFor="stage-title">Nova etapa</Label>
               <Input
@@ -77,75 +124,25 @@ export function StageManagerDialog({ open, onOpenChange }: { open: boolean; onOp
                 placeholder="Ex: Follow-up"
               />
             </div>
-            <div>
-              <Label>Cor</Label>
-              <div className="flex h-10 items-center gap-1">
-                {STAGE_COLORS.map(color => (
-                  <button
-                    key={color.value}
-                    type="button"
-                    title={color.label}
-                    aria-label={color.label}
-                    onClick={() => setNewColor(color.value)}
-                    className={cn(
-                      "h-7 w-7 rounded-full border-2 border-background ring-offset-background transition",
-                      color.value,
-                      newColor === color.value ? "ring-2 ring-ring" : "ring-1 ring-border",
-                    )}
-                  />
-                ))}
-              </div>
-            </div>
             <Button type="button" className="gap-2" onClick={handleAdd}>
               <Plus className="h-4 w-4" /> Adicionar
             </Button>
           </div>
 
-          <div className="max-h-[52vh] space-y-2 overflow-y-auto pr-1">
-            {stages.map((stage, index) => (
-              <div key={stage.id} className="grid gap-2 rounded-lg border border-border/70 bg-card p-3 sm:grid-cols-[auto_1fr_auto] sm:items-center">
-                <div className={cn("h-3 w-3 rounded-full", stage.color)} />
-                <div className="min-w-0">
-                  <Input
-                    value={stage.title}
-                    onChange={event => updateStage(stage.id, { title: event.target.value })}
-                    onBlur={() => toast.success("Etapa atualizada")}
-                    className="h-9"
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={stages.map(stage => stage.id)} strategy={verticalListSortingStrategy}>
+              <div className="max-h-[52vh] space-y-2 overflow-y-auto pr-1">
+                {stages.map(stage => (
+                  <SortableStageItem
+                    key={stage.id}
+                    stage={stage}
+                    onUpdate={title => updateStage(stage.id, { title })}
+                    onRemove={() => handleRemove(stage.id, stage.title)}
                   />
-                  <div className="mt-2 flex flex-wrap gap-1">
-                    {STAGE_COLORS.map(color => (
-                      <button
-                        key={color.value}
-                        type="button"
-                        title={color.label}
-                        aria-label={color.label}
-                        onClick={() => {
-                          updateStage(stage.id, { color: color.value });
-                          toast.success("Cor da etapa atualizada");
-                        }}
-                        className={cn(
-                          "h-6 w-6 rounded-full border-2 border-background ring-offset-background transition",
-                          color.value,
-                          stage.color === color.value ? "ring-2 ring-ring" : "ring-1 ring-border",
-                        )}
-                      />
-                    ))}
-                  </div>
-                </div>
-                <div className="flex justify-end gap-1">
-                  <Button type="button" size="icon" variant="ghost" disabled={index === 0} onClick={() => moveStage(stage.id, "up")} title="Subir etapa">
-                    <ArrowUp className="h-4 w-4" />
-                  </Button>
-                  <Button type="button" size="icon" variant="ghost" disabled={index === stages.length - 1} onClick={() => moveStage(stage.id, "down")} title="Descer etapa">
-                    <ArrowDown className="h-4 w-4" />
-                  </Button>
-                  <Button type="button" size="icon" variant="ghost" className="text-muted-foreground hover:text-destructive" onClick={() => handleRemove(stage.id, stage.title)} title="Remover etapa">
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </SortableContext>
+          </DndContext>
         </div>
 
         <DialogFooter>

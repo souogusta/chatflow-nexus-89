@@ -14,6 +14,20 @@ interface FinishedDeal {
   operatorId: string;
 }
 
+export type AppointmentType = "ligacao" | "reuniao" | "follow-up" | "demonstracao" | "retorno-comercial" | "outro";
+
+export interface Appointment {
+  id: string;
+  title: string;
+  dealId: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  sellerId: string;
+  description: string;
+  type: AppointmentType;
+}
+
 interface CRMCtx {
   deals: Deal[];
   setDeals: React.Dispatch<React.SetStateAction<Deal[]>>;
@@ -24,7 +38,12 @@ interface CRMCtx {
   addStage: (title: string, color?: string) => void;
   updateStage: (id: string, patch: Partial<Stage>) => void;
   moveStage: (id: string, direction: "up" | "down") => void;
+  reorderStage: (activeId: string, overId: string) => void;
   removeStage: (id: string) => boolean;
+  appointments: Appointment[];
+  addAppointment: (appointment: Appointment) => void;
+  updateAppointment: (id: string, patch: Partial<Appointment>) => void;
+  removeAppointment: (id: string) => void;
   finished: FinishedDeal[];
   finishDeal: (f: FinishedDeal) => void;
   agents: Agent[];
@@ -44,12 +63,38 @@ const loadStored = <T,>(key: string, fallback: T) => {
   }
 };
 
+const INITIAL_APPOINTMENTS: Appointment[] = [
+  {
+    id: "a1",
+    title: "Follow-up proposta",
+    dealId: "d1",
+    date: "2026-04-30",
+    startTime: "14:00",
+    endTime: "14:30",
+    sellerId: "s1",
+    description: "Revisar desconto e prazo para fechamento.",
+    type: "follow-up",
+  },
+  {
+    id: "a2",
+    title: "Demonstração produto",
+    dealId: "d13",
+    date: "2026-04-30",
+    startTime: "10:00",
+    endTime: "11:00",
+    sellerId: "s1",
+    description: "Apresentar linha B2B e condições fiscais.",
+    type: "demonstracao",
+  },
+];
+
 export function CRMProvider({ children }: { children: ReactNode }) {
   const [deals, setDeals] = useState<Deal[]>(() => loadStored("crm-deals", INITIAL_DEALS));
   const [finished, setFinished] = useState<FinishedDeal[]>([]);
   const [agents, setAgents] = useState<Agent[]>(INITIAL_AGENTS);
   const [tags, setTags] = useState<string[]>(ALL_TAGS);
   const [stages, setStages] = useState<Stage[]>(() => loadStored("crm-stages", STAGES));
+  const [appointments, setAppointments] = useState<Appointment[]>(() => loadStored("crm-appointments", INITIAL_APPOINTMENTS));
 
   useEffect(() => {
     window.localStorage.setItem("crm-deals", JSON.stringify(deals));
@@ -58,6 +103,10 @@ export function CRMProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     window.localStorage.setItem("crm-stages", JSON.stringify(stages));
   }, [stages]);
+
+  useEffect(() => {
+    window.localStorage.setItem("crm-appointments", JSON.stringify(appointments));
+  }, [appointments]);
 
   const addDeal = (deal: Deal) => setDeals(prev => [deal, ...prev]);
   const moveDeal = (id: string, stage: DealStage) =>
@@ -96,6 +145,17 @@ export function CRMProvider({ children }: { children: ReactNode }) {
       [next[index], next[targetIndex]] = [next[targetIndex], next[index]];
       return next;
     });
+  const reorderStage = (activeId: string, overId: string) =>
+    setStages(prev => {
+      const activeIndex = prev.findIndex(stage => stage.id === activeId);
+      const overIndex = prev.findIndex(stage => stage.id === overId);
+      if (activeIndex < 0 || overIndex < 0 || activeIndex === overIndex) return prev;
+
+      const next = [...prev];
+      const [moved] = next.splice(activeIndex, 1);
+      next.splice(overIndex, 0, moved);
+      return next;
+    });
   const removeStage = (id: string) => {
     if (id === "fechado" || id === "perdido") return false;
     const fallback = stages.find(stage => stage.id !== id)?.id || "novo-lead";
@@ -115,9 +175,15 @@ export function CRMProvider({ children }: { children: ReactNode }) {
       };
     }));
   };
+  const addAppointment = (appointment: Appointment) =>
+    setAppointments(prev => [...prev, appointment].sort((a, b) => `${a.date}T${a.startTime}`.localeCompare(`${b.date}T${b.startTime}`)));
+  const updateAppointment = (id: string, patch: Partial<Appointment>) =>
+    setAppointments(prev => prev.map(appointment => (appointment.id === id ? { ...appointment, ...patch } : appointment)));
+  const removeAppointment = (id: string) =>
+    setAppointments(prev => prev.filter(appointment => appointment.id !== id));
 
   return (
-    <Ctx.Provider value={{ deals, setDeals, addDeal, moveDeal, updateDeal, stages, addStage, updateStage, moveStage, removeStage, finished, finishDeal, agents, setAgents, tags, setTags }}>
+    <Ctx.Provider value={{ deals, setDeals, addDeal, moveDeal, updateDeal, stages, addStage, updateStage, moveStage, reorderStage, removeStage, appointments, addAppointment, updateAppointment, removeAppointment, finished, finishDeal, agents, setAgents, tags, setTags }}>
       {children}
     </Ctx.Provider>
   );

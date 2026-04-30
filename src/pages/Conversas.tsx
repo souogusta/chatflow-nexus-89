@@ -13,24 +13,25 @@ import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
 export default function Conversas() {
-  const { deals } = useCRM();
+  const { deals, canViewDeal } = useCRM();
   const [searchParams] = useSearchParams();
   const initialDealId = searchParams.get("deal");
   const query = searchParams.get("q")?.toLowerCase().trim() || "";
   const [conversationSearch, setConversationSearch] = useState(query);
+  const accessibleDeals = deals.filter(canViewDeal);
   const [selectedId, setSelectedId] = useState(
-    initialDealId && deals.some(d => d.id === initialDealId) ? initialDealId : deals[0]?.id
+    initialDealId && accessibleDeals.some(d => d.id === initialDealId) ? initialDealId : accessibleDeals[0]?.id
   );
   const activeSearch = conversationSearch.toLowerCase().trim();
   const visibleDeals = activeSearch
-    ? deals.filter(d =>
+    ? accessibleDeals.filter(d =>
       d.customer.toLowerCase().includes(activeSearch) ||
       d.phone.toLowerCase().includes(activeSearch) ||
       d.lastMessage.toLowerCase().includes(activeSearch) ||
       d.tags.some(tag => tag.toLowerCase().includes(activeSearch))
     )
-    : deals;
-  const selected = deals.find(d => d.id === selectedId);
+    : accessibleDeals;
+  const selected = accessibleDeals.find(d => d.id === selectedId);
   const seller = SELLERS.find(s => s.id === selected?.sellerId);
 
   const fakeMessages = selected ? [

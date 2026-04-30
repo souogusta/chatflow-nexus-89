@@ -1,18 +1,22 @@
 import { NavLink } from "react-router-dom";
 import { LayoutDashboard, Kanban, MessageSquare, CalendarDays, Bot, BarChart3, Settings, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { PermissionKey, useCRM } from "@/store/crm-store";
 
-const items = [
-  { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
+const items: { to: string; label: string; icon: typeof LayoutDashboard; end?: boolean; permission?: PermissionKey }[] = [
+  { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true, permission: "Ver dashboard" },
   { to: "/kanban", label: "Kanban", icon: Kanban },
   { to: "/conversas", label: "Conversas", icon: MessageSquare },
-  { to: "/calendario", label: "Calendário", icon: CalendarDays },
-  { to: "/agentes", label: "Agentes", icon: Bot },
-  { to: "/relatorios", label: "Relatórios", icon: BarChart3 },
-  { to: "/configuracoes", label: "Configurações", icon: Settings },
+  { to: "/calendario", label: "Calendario", icon: CalendarDays },
+  { to: "/agentes", label: "Agentes", icon: Bot, permission: "Criar agentes" },
+  { to: "/relatorios", label: "Relatorios", icon: BarChart3, permission: "Ver relatórios" },
+  { to: "/configuracoes", label: "Configuracoes", icon: Settings, permission: "Alterar configurações da empresa" },
 ];
 
 export function Sidebar() {
+  const { hasPermission } = useCRM();
+  const visibleItems = items.filter(item => !item.permission || hasPermission(item.permission));
+
   return (
     <aside className="hidden md:flex w-[248px] shrink-0 flex-col bg-gradient-sidebar text-sidebar-foreground p-4 sticky top-0 h-screen">
       <div className="flex items-center gap-2 px-2 py-3 mb-6">
@@ -26,7 +30,7 @@ export function Sidebar() {
       </div>
 
       <nav className="flex flex-col gap-1">
-        {items.map(({ to, label, icon: Icon, end }) => (
+        {visibleItems.map(({ to, label, icon: Icon, end }) => (
           <NavLink
             key={to}
             to={to}

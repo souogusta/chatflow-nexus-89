@@ -15,7 +15,7 @@ import { toast } from "sonner";
 export function DealDetailSheet({ deal, open, onOpenChange, onFinish }: {
   deal: Deal | null; open: boolean; onOpenChange: (v: boolean) => void; onFinish: () => void;
 }) {
-  const { updateDeal, tags, setTags, teamUsers } = useCRM();
+  const { updateDeal, tags, setTags, teamUsers, isAdmin } = useCRM();
   const [newTag, setNewTag] = useState("");
   const navigate = useNavigate();
 
@@ -112,10 +112,10 @@ export function DealDetailSheet({ deal, open, onOpenChange, onFinish }: {
             </div>
             <div>
               <Label>Responsável</Label>
-              <Select value={deal.sellerId} onValueChange={(v) => { updateDeal(deal.id, { sellerId: v }); toast.success("Responsável alterado"); }}>
+              <Select value={deal.sellerId} onValueChange={(v) => { updateDeal(deal.id, { sellerId: v }); toast.success("Responsável alterado"); }} disabled={!isAdmin}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {teamUsers.filter(user => user.active).map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                  {teamUsers.filter(user => user.active && user.role !== "Administrador").map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>

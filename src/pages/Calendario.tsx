@@ -53,7 +53,6 @@ const fromDateKey = (date: string) => {
   const [year, month, day] = date.split("-").map(Number);
   return new Date(year, month - 1, day);
 };
-const appointmentDateTime = (appointment: Appointment) => new Date(`${appointment.date}T${appointment.startTime}`);
 const minutesFromTime = (time: string) => {
   const [hours, minutes] = time.split(":").map(Number);
   return hours * 60 + minutes;
@@ -61,6 +60,7 @@ const minutesFromTime = (time: string) => {
 const timeFromMinutes = (totalMinutes: number) =>
   `${String(Math.floor(totalMinutes / 60)).padStart(2, "0")}:${String(totalMinutes % 60).padStart(2, "0")}`;
 const formatDateTime = (appointment: Appointment) => `${format(fromDateKey(appointment.date), "dd/MM/yyyy")} às ${appointment.startTime}`;
+const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
 
 const emptyForm = (dealId: string, sellerId: string, date = toDateKey(new Date()), startTime = "09:00") => ({
   title: "",
@@ -74,12 +74,15 @@ const emptyForm = (dealId: string, sellerId: string, date = toDateKey(new Date()
 });
 
 export default function Calendario() {
-  const { appointments, addAppointment, updateAppointment, removeAppointment, deals, teamUsers } = useCRM();
+  const { appointments, addAppointment, updateAppointment, removeAppointment, deals, teamUsers, currentUser, isAdmin, canViewDeal } = useCRM();
   const [view, setView] = useState<CalendarView>("week");
   const [cursor, setCursor] = useState(new Date(2026, 3, 30));
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Appointment | null>(null);
-  const [form, setForm] = useState(() => emptyForm(deals[0]?.id || "", teamUsers[0]?.id || ""));
+  const selectableDeals = useMemo(() => deals.filter(canViewDeal), [canViewDeal, deals]);
+  const sellerOptions = useMemo(() => teamUsers.filter(user => user.active && user.role !== "Administrador"), [teamUsers]);
+  const defaultSellerId = isAdmin ? sellerOptions[0]?.id || "" : currentUser?.id || "";
+  const [form, setForm] = useState(() => emptyForm(selectableDeals[0]?.id || "", defaultSellerId));
   const [draggingAppointmentId, setDraggingAppointmentId] = useState<string | null>(null);
 
   const sortedAppointments = useMemo(
@@ -99,11 +102,15 @@ export default function Calendario() {
     const start = minutesFromTime(startTime);
     const end = `${String(Math.floor((start + 30) / 60)).padStart(2, "0")}:${String((start + 30) % 60).padStart(2, "0")}`;
     setEditing(null);
-    setForm({ ...emptyForm(deals[0]?.id || "", teamUsers[0]?.id || "", date, startTime), endTime: end });
+    setForm({ ...emptyForm(selectableDeals[0]?.id || "", defaultSellerId, date, startTime), endTime: end });
     setModalOpen(true);
   };
 
   const openEdit = (appointment: Appointment) => {
+    if (!isAdmin && appointment.sellerId !== currentUser?.id) {
+      toast.info("Este agendamento é de outra vendedora e fica disponível apenas para consulta.");
+      return;
+    }
     setEditing(appointment);
     setForm({
       title: appointment.title,
@@ -128,18 +135,35 @@ export default function Calendario() {
       toast.error("Horário final deve ser depois do inicial");
       return;
     }
+    const hasConflict = appointments.some(appointment => {
+      if (editing?.id === appointment.id || appointment.date !== form.date) return false;
+      return minutesFromTime(form.startTime) < minutesFromTime(appointment.endTime)
+        && minutesFromTime(form.endTime) > minutesFromTime(appointment.startTime);
+    });
+
+    if (hasConflict) {
+      toast.error("Já existe agendamento neste horário. Escolha outro intervalo para evitar conflito entre vendedoras.");
+      return;
+    }
+
+    const payload = { ...form, sellerId: isAdmin ? form.sellerId : currentUser?.id || form.sellerId, title: form.title.trim() };
 
     if (editing) {
-      updateAppointment(editing.id, { ...form, title: form.title.trim() });
+      updateAppointment(editing.id, payload);
       toast.success("Agendamento atualizado");
     } else {
-      addAppointment({ ...form, id: `appt-${Date.now()}`, title: form.title.trim() });
+      addAppointment({ ...payload, id: `appt-${Date.now()}` });
       toast.success("Agendamento criado");
     }
     setModalOpen(false);
   };
 
   const startAppointmentDrag = (event: DragEvent<HTMLElement>, appointmentId: string) => {
+    const appointment = appointments.find(item => item.id === appointmentId);
+    if (!appointment || (!isAdmin && appointment.sellerId !== currentUser?.id)) {
+      event.preventDefault();
+      return;
+    }
     event.dataTransfer.effectAllowed = "move";
     event.dataTransfer.setData("text/plain", appointmentId);
     setDraggingAppointmentId(appointmentId);
@@ -155,6 +179,17 @@ export default function Calendario() {
       patch.startTime = startTime;
       patch.endTime = timeFromMinutes(minutesFromTime(startTime) + duration);
     }
+    const nextStart = patch.startTime || appointment.startTime;
+    const nextEnd = patch.endTime || appointment.endTime;
+    const hasConflict = appointments.some(item => item.id !== appointment.id && item.date === date
+      && minutesFromTime(nextStart) < minutesFromTime(item.endTime)
+      && minutesFromTime(nextEnd) > minutesFromTime(item.startTime));
+
+    if (hasConflict) {
+      setDraggingAppointmentId(null);
+      toast.error("Já existe agendamento neste horário.");
+      return;
+    }
 
     updateAppointment(appointment.id, patch);
     setDraggingAppointmentId(null);
@@ -165,6 +200,24 @@ export default function Calendario() {
     event.preventDefault();
     const appointmentId = event.dataTransfer.getData("text/plain") || draggingAppointmentId;
     if (!appointmentId) return;
+    moveAppointment(appointmentId, date, startTime);
+  };
+
+  const handleTimedAppointmentDrop = (event: DragEvent<HTMLDivElement>, date: string) => {
+    event.preventDefault();
+    const appointmentId = event.dataTransfer.getData("text/plain") || draggingAppointmentId;
+    if (!appointmentId) return;
+    const appointment = appointments.find(item => item.id === appointmentId);
+    if (!appointment) return;
+
+    const rect = event.currentTarget.getBoundingClientRect();
+    const minutesFromStart = (clamp(event.clientY - rect.top, 0, rect.height) / HOUR_HEIGHT) * 60;
+    const duration = Math.max(15, minutesFromTime(appointment.endTime) - minutesFromTime(appointment.startTime));
+    const dayStart = HOURS[0] * 60;
+    const dayEnd = dayStart + HOURS.length * 60;
+    const snappedMinutes = Math.round(minutesFromStart / 15) * 15;
+    const startTime = timeFromMinutes(clamp(dayStart + snappedMinutes, dayStart, dayEnd - duration));
+
     moveAppointment(appointmentId, date, startTime);
   };
 
@@ -190,14 +243,12 @@ export default function Calendario() {
         const top = ((start - HOURS[0] * 60) / 60) * HOUR_HEIGHT;
         const height = Math.max(((end - start) / 60) * HOUR_HEIGHT, 34);
         const typeStyle = APPOINTMENT_TYPES.find(type => type.value === appointment.type)?.className;
-        const deal = deals.find(item => item.id === appointment.dealId);
-        const seller = teamUsers.find(item => item.id === appointment.sellerId);
 
         return (
           <button
             key={appointment.id}
             type="button"
-            draggable
+            draggable={isAdmin || appointment.sellerId === currentUser?.id}
             onDragStart={event => startAppointmentDrag(event, appointment.id)}
             onDragEnd={() => setDraggingAppointmentId(null)}
             onClick={event => {
@@ -214,8 +265,6 @@ export default function Calendario() {
           >
             <div className="truncate font-semibold">{appointment.title}</div>
             <div className="truncate opacity-80">{appointment.startTime} - {appointment.endTime}</div>
-            <div className="truncate opacity-80">{deal?.customer}</div>
-            <div className="truncate opacity-80">Vendedor: {seller?.name}</div>
           </button>
         );
       })}
@@ -292,13 +341,12 @@ export default function Calendario() {
                     <div className="space-y-1">
                       {dayAppointments.slice(0, 3).map(appointment => {
                         const typeStyle = APPOINTMENT_TYPES.find(type => type.value === appointment.type)?.className;
-                        const seller = teamUsers.find(item => item.id === appointment.sellerId);
                         return (
                           <span
                             key={appointment.id}
                             role="button"
                             tabIndex={0}
-                            draggable
+                            draggable={isAdmin || appointment.sellerId === currentUser?.id}
                             onDragStart={event => startAppointmentDrag(event, appointment.id)}
                             onDragEnd={() => setDraggingAppointmentId(null)}
                             onClick={event => {
@@ -307,7 +355,7 @@ export default function Calendario() {
                             }}
                             className={cn("block cursor-grab truncate rounded border px-2 py-1 text-[11px] font-medium active:cursor-grabbing", draggingAppointmentId === appointment.id && "opacity-60", typeStyle)}
                           >
-                            {appointment.startTime} {appointment.title} - {seller?.name}
+                            {appointment.startTime} {appointment.title}
                           </span>
                         );
                       })}
@@ -357,6 +405,8 @@ export default function Calendario() {
                   <div
                     key={day.toISOString()}
                     className="relative border-r border-border/70"
+                    onDragOver={event => event.preventDefault()}
+                    onDrop={event => handleTimedAppointmentDrop(event, toDateKey(day))}
                     style={{ height: HOURS.length * HOUR_HEIGHT }}
                   >
                     {HOURS.map(hour => (
@@ -364,8 +414,6 @@ export default function Calendario() {
                       key={hour}
                       type="button"
                       onClick={() => openCreate(toDateKey(day), `${String(hour).padStart(2, "0")}:00`)}
-                      onDragOver={event => event.preventDefault()}
-                      onDrop={event => handleAppointmentDrop(event, toDateKey(day), `${String(hour).padStart(2, "0")}:00`)}
                       className="block h-16 w-full border-b border-border/70 bg-card text-left hover:bg-secondary/40"
                     />
                   ))}
@@ -430,16 +478,16 @@ export default function Calendario() {
                 <Select value={form.dealId} onValueChange={dealId => setForm(prev => ({ ...prev, dealId }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {deals.map(deal => <SelectItem key={deal.id} value={deal.id}>{deal.customer}</SelectItem>)}
+                    {selectableDeals.map(deal => <SelectItem key={deal.id} value={deal.id}>{deal.customer}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
               <div>
                 <Label>Responsável/vendedora</Label>
-                <Select value={form.sellerId} onValueChange={sellerId => setForm(prev => ({ ...prev, sellerId }))}>
+                <Select value={isAdmin ? form.sellerId : currentUser?.id || form.sellerId} onValueChange={sellerId => setForm(prev => ({ ...prev, sellerId }))} disabled={!isAdmin}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {teamUsers.filter(user => user.active).map(seller => <SelectItem key={seller.id} value={seller.id}>{seller.name}</SelectItem>)}
+                    {sellerOptions.map(seller => <SelectItem key={seller.id} value={seller.id}>{seller.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>

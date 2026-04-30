@@ -1,6 +1,6 @@
 import { FormEvent, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, Bell, Filter, MessageCircle, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { Search, Bell, Filter, MessageCircle, AlertTriangle, CheckCircle2, LogOut } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -11,7 +11,7 @@ import { useCRM } from "@/store/crm-store";
 
 export function Topbar({ title, subtitle }: { title: string; subtitle?: string }) {
   const navigate = useNavigate();
-  const { deals, stages, accountProfile, teamUsers } = useCRM();
+  const { deals, stages, accountProfile, teamUsers, logout, canViewDeal, isAdmin } = useCRM();
   const [search, setSearch] = useState("");
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -20,6 +20,7 @@ export function Topbar({ title, subtitle }: { title: string; subtitle?: string }
   const [filterTemp, setFilterTemp] = useState("all");
 
   const notifications = deals
+    .filter(canViewDeal)
     .filter(deal => deal.unread || deal.temperature === "quente")
     .slice(0, 6);
 
@@ -59,9 +60,11 @@ export function Topbar({ title, subtitle }: { title: string; subtitle?: string }
         </form>
 
         <div className="flex items-center justify-end gap-3">
-          <Button variant="outline" size="icon" className="rounded-xl" onClick={() => setFiltersOpen(true)}>
-            <Filter className="w-4 h-4" />
-          </Button>
+          {isAdmin && (
+            <Button variant="outline" size="icon" className="rounded-xl" onClick={() => setFiltersOpen(true)}>
+              <Filter className="w-4 h-4" />
+            </Button>
+          )}
           <Button variant="outline" size="icon" className="rounded-xl relative" onClick={() => setNotificationsOpen(true)}>
             <Bell className="w-4 h-4" />
             {notifications.length > 0 && <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-destructive" />}
@@ -76,6 +79,9 @@ export function Topbar({ title, subtitle }: { title: string; subtitle?: string }
               <AvatarImage src={accountProfile.photoUrl} alt={accountProfile.name} />
               <AvatarFallback className="bg-gradient-primary text-primary-foreground font-semibold text-sm">{accountProfile.avatar}</AvatarFallback>
             </Avatar>
+            <Button variant="ghost" size="icon" className="rounded-xl" onClick={logout} title="Sair">
+              <LogOut className="w-4 h-4" />
+            </Button>
           </div>
         </div>
       </div>

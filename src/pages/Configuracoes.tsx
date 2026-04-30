@@ -15,7 +15,7 @@ import { toast } from "sonner";
 const ROLES = ["Administrador", "Gerente", "Vendedora", "Suporte"];
 const PERMISSIONS = [
   "Ver dashboard", "Ver todos os atendimentos", "Ver apenas próprios atendimentos",
-  "Editar kanban", "Finalizar venda", "Criar agentes", "Editar agentes",
+  "Editar funil", "Finalizar venda", "Criar agentes", "Editar agentes",
   "Ver relatórios", "Exportar dados", "Criar usuários", "Alterar configurações da empresa"
 ];
 const DEFAULT_PERMS: Record<string, boolean[]> = {
@@ -50,15 +50,17 @@ const readImageFile = (file: File, onLoad: (dataUrl: string) => void) => {
 const emptyUser: TeamUser = {
   id: "new",
   name: "",
+  username: "",
   avatar: "",
   email: "",
   phone: "",
   role: "Vendedora",
+  password: "123456",
   active: true,
 };
 
 export default function Configuracoes() {
-  const { teamUsers: users, setTeamUsers: setUsers, accountProfile, setAccountProfile } = useCRM();
+  const { teamUsers: users, setTeamUsers: setUsers, accountProfile, setAccountProfile, currentUser, hasPermission } = useCRM();
   const [perms, setPerms] = useState(DEFAULT_PERMS);
   const [userDialogOpen, setUserDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<TeamUser>(emptyUser);
@@ -78,14 +80,16 @@ export default function Configuracoes() {
   const saveUser = () => {
     if (!editingUser.name.trim()) return toast.error("Informe o nome do usuário");
     if (!editingUser.email.trim()) return toast.error("Informe o e-mail do usuário");
+    if (!editingUser.password.trim()) return toast.error("Informe a senha do usuário");
     const avatar = editingUser.avatar.trim() || initialsFromName(editingUser.name);
+    const username = editingUser.username?.trim() || editingUser.email.split("@")[0];
     if (editingUser.id === "new") {
-      setUsers(prev => [...prev, { ...editingUser, id: `u${Date.now()}`, avatar }]);
+      setUsers(prev => [...prev, { ...editingUser, id: `u${Date.now()}`, avatar, username }]);
       toast.success("Usuário criado");
     } else {
-      const updatedUser = { ...editingUser, avatar };
+      const updatedUser = { ...editingUser, avatar, username };
       setUsers(prev => prev.map(user => user.id === editingUser.id ? updatedUser : user));
-      if (editingUser.id === "s1") {
+      if (editingUser.id === currentUser?.id) {
         setAccountProfile(prev => ({
           ...prev,
           name: updatedUser.name,
@@ -105,7 +109,7 @@ export default function Configuracoes() {
     const avatar = initialsFromName(accountProfile.name);
     const nextProfile = { ...accountProfile, avatar };
     setAccountProfile(nextProfile);
-    setUsers(prev => prev.map(user => user.id === "s1"
+    setUsers(prev => prev.map(user => user.id === currentUser?.id
       ? {
         ...user,
         name: nextProfile.name,
@@ -124,7 +128,7 @@ export default function Configuracoes() {
     if (!file) return;
     readImageFile(file, photoUrl => {
       setAccountProfile(prev => ({ ...prev, photoUrl }));
-      setUsers(prev => prev.map(user => user.id === "s1" ? { ...user, photoUrl } : user));
+      setUsers(prev => prev.map(user => user.id === currentUser?.id ? { ...user, photoUrl } : user));
       toast.success("Foto atualizada");
     });
     event.target.value = "";
@@ -138,9 +142,23 @@ export default function Configuracoes() {
   };
 
   const removeUser = (id: string) => {
+    if (id === "admin") {
+      toast.error("A conta admin inicial não pode ser excluída");
+      return;
+    }
     setUsers(prev => prev.filter(user => user.id !== id));
     toast.success("Usuário excluído");
   };
+
+  if (!hasPermission("Alterar configurações da empresa")) {
+    return (
+      <AppLayout title="Configurações" subtitle="Acesso restrito">
+        <div className="card-elevated p-6 text-sm text-muted-foreground">
+          Seu usuário não tem permissão para alterar configurações da empresa.
+        </div>
+      </AppLayout>
+    );
+  }
 
   return (
     <AppLayout title="Configurações" subtitle="Gerencie sua conta, equipe e integrações">
@@ -283,6 +301,14 @@ export default function Configuracoes() {
             <div>
               <Label htmlFor="userEmail">E-mail *</Label>
               <Input id="userEmail" type="email" value={editingUser.email} onChange={event => setEditingUser({ ...editingUser, email: event.target.value })} />
+            </div>
+            <div>
+              <Label htmlFor="userLogin">Login</Label>
+              <Input id="userLogin" value={editingUser.username || ""} onChange={event => setEditingUser({ ...editingUser, username: event.target.value })} placeholder="ana.paula" />
+            </div>
+            <div>
+              <Label htmlFor="userPassword">Senha *</Label>
+              <Input id="userPassword" type="password" value={editingUser.password} onChange={event => setEditingUser({ ...editingUser, password: event.target.value })} />
             </div>
             <div>
               <Label htmlFor="userPhone">Telefone</Label>

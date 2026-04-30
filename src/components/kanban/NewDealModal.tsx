@@ -20,10 +20,11 @@ const initialForm = {
 };
 
 export function NewDealModal({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
-  const { addDeal, teamUsers } = useCRM();
-  const [form, setForm] = useState(initialForm);
+  const { addDeal, teamUsers, currentUser, isAdmin } = useCRM();
+  const defaultSellerId = isAdmin ? teamUsers.find(user => user.active && user.role !== "Administrador")?.id || initialForm.sellerId : currentUser?.id || initialForm.sellerId;
+  const [form, setForm] = useState(() => ({ ...initialForm, sellerId: defaultSellerId }));
 
-  const reset = () => setForm(initialForm);
+  const reset = () => setForm({ ...initialForm, sellerId: defaultSellerId });
 
   const save = () => {
     if (!form.customer.trim()) return toast.error("Informe o nome do cliente");
@@ -38,7 +39,7 @@ export function NewDealModal({ open, onOpenChange }: { open: boolean; onOpenChan
         : "Atendimento presencial registrado na loja.",
       interest: form.productInterest.trim() || undefined,
       lastInteraction: new Date().toISOString(),
-      sellerId: form.sellerId,
+      sellerId: isAdmin ? form.sellerId : currentUser?.id || form.sellerId,
       temperature: form.temperature,
       tags: ["Presencial"],
       unread: false,
@@ -76,10 +77,10 @@ export function NewDealModal({ open, onOpenChange }: { open: boolean; onOpenChan
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <Label>Responsável</Label>
-              <Select value={form.sellerId} onValueChange={(sellerId) => setForm({ ...form, sellerId })}>
+              <Select value={isAdmin ? form.sellerId : currentUser?.id || form.sellerId} onValueChange={(sellerId) => setForm({ ...form, sellerId })} disabled={!isAdmin}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {teamUsers.filter(user => user.active).map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                  {teamUsers.filter(user => user.active && user.role !== "Administrador").map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>

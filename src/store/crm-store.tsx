@@ -31,11 +31,13 @@ export interface Appointment {
 export type TeamUser = {
   id: string;
   name: string;
+  username?: string;
   avatar: string;
   photoUrl?: string;
   email: string;
   phone?: string;
   role: string;
+  password: string;
   active: boolean;
 };
 
@@ -74,9 +76,38 @@ interface CRMCtx {
   setTeamUsers: React.Dispatch<React.SetStateAction<TeamUser[]>>;
   accountProfile: AccountProfile;
   setAccountProfile: React.Dispatch<React.SetStateAction<AccountProfile>>;
+  currentUser: TeamUser | null;
+  isAdmin: boolean;
+  login: (identifier: string, password: string) => boolean;
+  logout: () => void;
+  hasPermission: (permission: PermissionKey) => boolean;
+  canViewDeal: (deal: Deal) => boolean;
 }
 
 const Ctx = createContext<CRMCtx | null>(null);
+
+export const PERMISSIONS = [
+  "Ver dashboard",
+  "Ver todos os atendimentos",
+  "Ver apenas próprios atendimentos",
+  "Editar funil",
+  "Finalizar venda",
+  "Criar agentes",
+  "Editar agentes",
+  "Ver relatórios",
+  "Exportar dados",
+  "Criar usuários",
+  "Alterar configurações da empresa",
+] as const;
+
+export type PermissionKey = typeof PERMISSIONS[number];
+
+const DEFAULT_PERMISSIONS: Record<string, PermissionKey[]> = {
+  Administrador: [...PERMISSIONS],
+  Gerente: PERMISSIONS.filter(permission => !["Criar usuários", "Alterar configurações da empresa", "Editar funil"].includes(permission)),
+  Vendedora: ["Ver dashboard", "Ver apenas próprios atendimentos", "Finalizar venda"],
+  Suporte: ["Ver dashboard", "Ver todos os atendimentos", "Ver relatórios"],
+};
 
 const loadStored = <T,>(key: string, fallback: T) => {
   try {
@@ -112,22 +143,64 @@ const INITIAL_APPOINTMENTS: Appointment[] = [
   },
 ];
 
-const initialTeamUsers: TeamUser[] = SELLERS.map((seller, index) => ({
-  ...seller,
-  email: `${seller.name.toLowerCase().replace(" ", ".")}@empresa.com`,
-  phone: index === 0 ? "+55 11 98765-4321" : "",
-  role: index === 0 ? "Administrador" : "Vendedora",
+const adminUser: TeamUser = {
+  id: "admin",
+  name: "Administrador",
+  username: "admin",
+  avatar: "AD",
+  email: "admin@empresa.com",
+  phone: "",
+  role: "Administrador",
+  password: "admin123",
   active: true,
-}));
+};
+
+const initialTeamUsers: TeamUser[] = [
+  adminUser,
+  ...SELLERS.map((seller, index) => ({
+    ...seller,
+    username: seller.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").split(" ")[0],
+    email: `${seller.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(" ", ".")}@empresa.com`,
+    phone: index === 0 ? "+55 11 98765-4321" : "",
+    role: "Vendedora",
+    password: index === 0 ? "ana123" : "123456",
+    active: true,
+  })),
+];
 
 const initialAccountProfile: AccountProfile = {
-  name: initialTeamUsers[0].name,
-  email: initialTeamUsers[0].email,
-  phone: initialTeamUsers[0].phone || "",
-  role: initialTeamUsers[0].role,
-  avatar: initialTeamUsers[0].avatar,
-  photoUrl: initialTeamUsers[0].photoUrl,
+  name: adminUser.name,
+  email: adminUser.email,
+  phone: adminUser.phone || "",
+  role: adminUser.role,
+  avatar: adminUser.avatar,
+  photoUrl: adminUser.photoUrl,
 };
+
+const normalizeTeamUsers = (users: TeamUser[]) => {
+  const withRequiredFields = users.map(user => {
+    const isLegacyUser = !user.password;
+    return {
+      ...user,
+      role: user.id !== "admin" && isLegacyUser && user.role === "Administrador" ? "Vendedora" : user.role,
+      password: user.password || (user.id === "admin" ? "admin123" : "123456"),
+      username: user.username || (user.id === "admin" ? "admin" : user.email.split("@")[0]),
+    };
+  });
+
+  return withRequiredFields.some(user => user.id === "admin")
+    ? withRequiredFields.map(user => user.id === "admin" ? { ...adminUser, ...user, role: "Administrador" } : user)
+    : [adminUser, ...withRequiredFields];
+};
+
+const profileFromUser = (user: TeamUser): AccountProfile => ({
+  name: user.name,
+  email: user.email,
+  phone: user.phone || "",
+  role: user.role,
+  avatar: user.avatar,
+  photoUrl: user.photoUrl,
+});
 
 export function CRMProvider({ children }: { children: ReactNode }) {
   const [deals, setDeals] = useState<Deal[]>(() => loadStored("crm-deals", INITIAL_DEALS));
@@ -136,8 +209,12 @@ export function CRMProvider({ children }: { children: ReactNode }) {
   const [tags, setTags] = useState<string[]>(ALL_TAGS);
   const [stages, setStages] = useState<Stage[]>(() => loadStored("crm-stages", STAGES));
   const [appointments, setAppointments] = useState<Appointment[]>(() => loadStored("crm-appointments", INITIAL_APPOINTMENTS));
-  const [teamUsers, setTeamUsers] = useState<TeamUser[]>(() => loadStored("crm-team-users", initialTeamUsers));
+  const [teamUsers, setTeamUsers] = useState<TeamUser[]>(() => normalizeTeamUsers(loadStored("crm-team-users", initialTeamUsers)));
+  const [currentUserId, setCurrentUserId] = useState<string | null>(() => loadStored("crm-current-user-id", null));
   const [accountProfile, setAccountProfile] = useState<AccountProfile>(() => loadStored("crm-account-profile", initialAccountProfile));
+
+  const currentUser = teamUsers.find(user => user.id === currentUserId && user.active) || null;
+  const isAdmin = currentUser?.role === "Administrador";
 
   useEffect(() => {
     window.localStorage.setItem("crm-deals", JSON.stringify(deals));
@@ -158,6 +235,42 @@ export function CRMProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     window.localStorage.setItem("crm-account-profile", JSON.stringify(accountProfile));
   }, [accountProfile]);
+
+  useEffect(() => {
+    if (currentUserId) {
+      window.localStorage.setItem("crm-current-user-id", JSON.stringify(currentUserId));
+    } else {
+      window.localStorage.removeItem("crm-current-user-id");
+    }
+  }, [currentUserId]);
+
+  useEffect(() => {
+    if (currentUser) setAccountProfile(profileFromUser(currentUser));
+  }, [currentUser]);
+
+  const login = (identifier: string, password: string) => {
+    const normalizedIdentifier = identifier.trim().toLowerCase();
+    const user = teamUsers.find(item =>
+      item.active &&
+      item.password === password &&
+      [item.username, item.email, item.name].filter(Boolean).some(value => value?.toLowerCase() === normalizedIdentifier)
+    );
+
+    if (!user) return false;
+    setCurrentUserId(user.id);
+    setAccountProfile(profileFromUser(user));
+    return true;
+  };
+
+  const logout = () => setCurrentUserId(null);
+
+  const hasPermission = (permission: PermissionKey) => {
+    if (!currentUser) return false;
+    if (currentUser.role === "Administrador") return true;
+    return (DEFAULT_PERMISSIONS[currentUser.role] || []).includes(permission);
+  };
+
+  const canViewDeal = (deal: Deal) => hasPermission("Ver todos os atendimentos") || deal.sellerId === currentUser?.id;
 
   const addDeal = (deal: Deal) => setDeals(prev => [deal, ...prev]);
   const moveDeal = (id: string, stage: DealStage) =>
@@ -234,7 +347,7 @@ export function CRMProvider({ children }: { children: ReactNode }) {
     setAppointments(prev => prev.filter(appointment => appointment.id !== id));
 
   return (
-    <Ctx.Provider value={{ deals, setDeals, addDeal, moveDeal, updateDeal, stages, addStage, updateStage, moveStage, reorderStage, removeStage, appointments, addAppointment, updateAppointment, removeAppointment, finished, finishDeal, agents, setAgents, tags, setTags, teamUsers, setTeamUsers, accountProfile, setAccountProfile }}>
+    <Ctx.Provider value={{ deals, setDeals, addDeal, moveDeal, updateDeal, stages, addStage, updateStage, moveStage, reorderStage, removeStage, appointments, addAppointment, updateAppointment, removeAppointment, finished, finishDeal, agents, setAgents, tags, setTags, teamUsers, setTeamUsers, accountProfile, setAccountProfile, currentUser, isAdmin, login, logout, hasPermission, canViewDeal }}>
       {children}
     </Ctx.Provider>
   );

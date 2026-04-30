@@ -93,25 +93,29 @@ export default function Dashboard() {
   const [selectedSellerIds, setSelectedSellerIds] = useState<string[]>(SELLER_IDS);
   const [customStart, setCustomStart] = useState("2026-04-01");
   const [customEnd, setCustomEnd] = useState("2026-04-28");
-  const { deals } = useCRM();
+  const { deals, canViewDeal, currentUser, isAdmin } = useCRM();
   const navigate = useNavigate();
 
   const days = period === "custom"
     ? daysBetween(customStart, customEnd)
     : PERIODS.find(p => p.id === period)?.days ?? 7;
-  const allSellersSelected = selectedSellerIds.length === SELLER_IDS.length;
-  const sellerParam = allSellersSelected ? "all" : selectedSellerIds.join(",");
+  const effectiveSellerIds = useMemo(
+    () => (isAdmin ? selectedSellerIds : currentUser?.id ? [currentUser.id] : []),
+    [currentUser?.id, isAdmin, selectedSellerIds],
+  );
+  const allSellersSelected = isAdmin && effectiveSellerIds.length === SELLER_IDS.length;
+  const sellerParam = allSellersSelected ? "all" : effectiveSellerIds.join(",");
   const multiplier = allSellersSelected
     ? 1
-    : selectedSellerIds.reduce((sum, id) => sum + (sellerMultipliers[id] ?? 1), 0) / SELLER_IDS.length;
+    : effectiveSellerIds.reduce((sum, id) => sum + (sellerMultipliers[id] ?? 1), 0) / Math.max(effectiveSellerIds.length, 1);
   const sellerFilterLabel = allSellersSelected
     ? "Todas vendedoras"
-    : selectedSellerIds.length === 1
-      ? SELLERS.find(s => s.id === selectedSellerIds[0])?.name ?? "1 vendedora"
-      : `${selectedSellerIds.length} vendedoras`;
+    : effectiveSellerIds.length === 1
+      ? SELLERS.find(s => s.id === effectiveSellerIds[0])?.name ?? currentUser?.name ?? "1 vendedora"
+      : `${effectiveSellerIds.length} vendedoras`;
   const filteredDeals = useMemo(
-    () => allSellersSelected ? deals : deals.filter(d => selectedSellerIds.includes(d.sellerId)),
-    [allSellersSelected, deals, selectedSellerIds]
+    () => deals.filter(deal => canViewDeal(deal) && (allSellersSelected || effectiveSellerIds.includes(deal.sellerId))),
+    [allSellersSelected, canViewDeal, deals, effectiveSellerIds]
   );
 
   const series = useMemo(() => (
@@ -178,8 +182,8 @@ export default function Dashboard() {
   };
 
   const ranking = useMemo(() => (
-    allSellersSelected ? SELLER_RANKING : SELLER_RANKING.filter(s => selectedSellerIds.includes(s.id))
-  ), [allSellersSelected, selectedSellerIds]);
+    allSellersSelected ? SELLER_RANKING : SELLER_RANKING.filter(s => effectiveSellerIds.includes(s.id))
+  ), [allSellersSelected, effectiveSellerIds]);
 
   const critical = filteredDeals
     .filter(d => d.temperature === "quente")
@@ -224,7 +228,7 @@ export default function Dashboard() {
   return (
     <AppLayout title="Dashboard" subtitle="Visão geral do seu atendimento comercial">
       <div className="flex flex-wrap items-end gap-3 mb-6">
-        <div>
+        {isAdmin && <div>
           <Label className="text-xs text-muted-foreground">Atendente</Label>
           <Popover>
             <PopoverTrigger asChild>
@@ -247,7 +251,7 @@ export default function Dashboard() {
               ))}
             </PopoverContent>
           </Popover>
-        </div>
+        </div>}
 
         <div className="flex items-center gap-1 bg-card rounded-xl p-1 border border-border/60">
           {PERIODS.map(p => (

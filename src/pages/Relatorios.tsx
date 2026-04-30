@@ -110,7 +110,7 @@ const buildPieChartSvg = (data: typeof REFUSAL_PIE) => {
 };
 
 export default function Relatorios() {
-  const { deals, agents, stages } = useCRM();
+  const { deals, agents, stages, canViewDeal, isAdmin, currentUser, hasPermission } = useCRM();
   const [searchParams] = useSearchParams();
   const [selected, setSelected] = useState(searchParams.get("report") || "atendimentos");
   const [period, setPeriod] = useState(searchParams.get("period") || "30d");
@@ -137,8 +137,9 @@ export default function Relatorios() {
         ? interactionTime >= startDate && interactionTime <= endDate
         : interactionTime >= cutoff;
 
-      return matchesPeriod
-        && (seller === "all" || deal.sellerId === seller)
+      return canViewDeal(deal)
+        && matchesPeriod
+        && (!isAdmin || seller === "all" || deal.sellerId === seller)
         && (stage === "all" || deal.stage === stage)
         && (temperature === "all" || deal.temperature === temperature)
         && (result === "all" || dealResult === result)
@@ -146,7 +147,7 @@ export default function Relatorios() {
         && (channel === "all" || dealChannel === channel)
         && (!minValue || (deal.estimatedValue || 0) >= Number(minValue));
     });
-  }, [deals, period, customStart, customEnd, seller, stage, temperature, result, reason, channel, minValue]);
+  }, [canViewDeal, deals, period, customStart, customEnd, seller, stage, temperature, result, reason, channel, minValue, isAdmin]);
 
   const reportRows = useMemo(() => {
     if (selected === "vendas") return filteredDeals.filter(deal => deal.stage === "fechado");
@@ -161,7 +162,8 @@ export default function Relatorios() {
   const conversion = reportRows.length ? ((closedCount / reportRows.length) * 100).toFixed(1) : "0.0";
   const avgTicket = closedCount ? totalValue / closedCount : 0;
 
-  const sellerPerformance = SELLERS.map(s => {
+  const visibleSellers = isAdmin ? SELLERS : SELLERS.filter(sellerItem => sellerItem.id === currentUser?.id);
+  const sellerPerformance = visibleSellers.map(s => {
     const sellerDeals = filteredDeals.filter(deal => deal.sellerId === s.id);
     const sellerClosed = sellerDeals.filter(deal => deal.stage === "fechado").length;
     return {
@@ -183,6 +185,10 @@ export default function Relatorios() {
   }));
 
   const exportFile = (type: "xlsx" | "csv") => {
+    if (!hasPermission("Exportar dados")) {
+      toast.error("Seu usuário não tem permissão para exportar dados");
+      return;
+    }
     if (type === "xlsx") {
       const lineSeries = MONTHLY_SERIES.slice(-(daysByPeriod[period] ?? 30));
       const tableRows = reportRows.map(deal => {
@@ -313,6 +319,16 @@ export default function Relatorios() {
     toast.success("Relatório CSV exportado");
   };
 
+  if (!hasPermission("Ver relatórios")) {
+    return (
+      <AppLayout title="Relatórios" subtitle="Acesso restrito">
+        <div className="card-elevated p-6 text-sm text-muted-foreground">
+          Seu usuário não tem permissão para visualizar relatórios.
+        </div>
+      </AppLayout>
+    );
+  }
+
   return (
     <AppLayout title="Relatórios" subtitle="Filtre e exporte os dados que precisar">
       <div className="card-elevated p-5 mb-5">
@@ -327,9 +343,9 @@ export default function Relatorios() {
               <div><Label className="text-xs">Fim</Label><Input type="date" value={customEnd} onChange={event => setCustomEnd(event.target.value)} /></div>
             </>
           )}
-          <div><Label className="text-xs">Vendedora</Label><Select value={seller} onValueChange={setSeller}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>
+          {isAdmin && <div><Label className="text-xs">Vendedora</Label><Select value={seller} onValueChange={setSeller}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>
             <SelectItem value="all">Todas</SelectItem>{SELLERS.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
-          </SelectContent></Select></div>
+          </SelectContent></Select></div>}
           <div><Label className="text-xs">Status</Label><Select value={stage} onValueChange={setStage}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>
             <SelectItem value="all">Todos</SelectItem>{stages.map(s => <SelectItem key={s.id} value={s.id}>{s.title}</SelectItem>)}
           </SelectContent></Select></div>

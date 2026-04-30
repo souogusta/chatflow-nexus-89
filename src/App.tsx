@@ -11,6 +11,7 @@ import Calendario from "./pages/Calendario";
 import Agentes from "./pages/Agentes";
 import Relatorios from "./pages/Relatorios";
 import Configuracoes from "./pages/Configuracoes";
+import Login from "./pages/Login";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -23,6 +24,7 @@ const App = () => (
       <CRMProvider>
         <BrowserRouter>
           <Routes>
+            <Route path="/login" element={<Login />} />
             <Route path="/" element={<Dashboard />} />
             <Route path="/kanban" element={<Kanban />} />
             <Route path="/conversas" element={<Conversas />} />

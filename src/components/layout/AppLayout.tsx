@@ -1,8 +1,14 @@
 import { ReactNode } from "react";
+import { Navigate } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
+import { useCRM } from "@/store/crm-store";
 
 export function AppLayout({ children, title, subtitle }: { children: ReactNode; title: string; subtitle?: string }) {
+  const { currentUser } = useCRM();
+
+  if (!currentUser) return <Navigate to="/login" replace />;
+
   return (
     <div className="flex min-h-screen w-full bg-background">
       <Sidebar />

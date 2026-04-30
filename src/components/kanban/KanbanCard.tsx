@@ -14,15 +14,15 @@ const formatAppointment = (appointment: Appointment) => {
   return `${day}/${month}/${year} às ${appointment.startTime}`;
 };
 
-export function KanbanCard({ deal, nextAppointment, onClick }: { deal: Deal; nextAppointment?: Appointment; onClick: () => void }) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: deal.id });
+export function KanbanCard({ deal, nextAppointment, onClick, draggable = true }: { deal: Deal; nextAppointment?: Appointment; onClick: () => void; draggable?: boolean }) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: deal.id, disabled: !draggable });
   const { teamUsers } = useCRM();
   const seller = teamUsers.find(s => s.id === deal.sellerId);
 
   const style = transform ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` } : undefined;
 
   return (
-    <div ref={setNodeRef} style={style} {...listeners} {...attributes}
+    <div ref={setNodeRef} style={style} {...(draggable ? listeners : {})} {...(draggable ? attributes : {})}
       onClick={onClick}
       className={cn(
         "group rounded-xl border border-border/70 bg-card p-3 shadow-sm hover:border-primary/25 hover:shadow-soft cursor-pointer transition-all",
@@ -36,13 +36,15 @@ export function KanbanCard({ deal, nextAppointment, onClick }: { deal: Deal; nex
           ) : null}
         </div>
         {deal.unread && (
-          <span className="shrink-0 rounded-full bg-destructive-soft px-2 py-0.5 text-[10px] font-semibold text-destructive">
-            Aguardando mensagem
-          </span>
+          <span
+            className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-destructive"
+            title="Cliente aguardando"
+            aria-label="Cliente aguardando"
+          />
         )}
       </div>
 
-      <p className="text-xs text-muted-foreground line-clamp-2 mb-2">{deal.interest || deal.lastMessage}</p>
+      <p className="text-xs text-muted-foreground line-clamp-2 mb-2">{deal.interest || "Interesse nao informado"}</p>
 
       {deal.tags.length > 0 && (
         <div className="flex flex-wrap gap-1 mb-2">

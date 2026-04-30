@@ -1,23 +1,17 @@
 import { FormEvent, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, Bell, Filter, MessageCircle, AlertTriangle, CheckCircle2, LogOut } from "lucide-react";
+import { Search, Bell, MessageCircle, AlertTriangle, CheckCircle2, LogOut } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Label } from "@/components/ui/label";
 import { useCRM } from "@/store/crm-store";
 
 export function Topbar({ title, subtitle }: { title: string; subtitle?: string }) {
   const navigate = useNavigate();
-  const { deals, stages, accountProfile, teamUsers, logout, canViewDeal, isAdmin } = useCRM();
+  const { deals, accountProfile, logout, canViewDeal } = useCRM();
   const [search, setSearch] = useState("");
   const [notificationsOpen, setNotificationsOpen] = useState(false);
-  const [filtersOpen, setFiltersOpen] = useState(false);
-  const [filterSeller, setFilterSeller] = useState("all");
-  const [filterStage, setFilterStage] = useState("all");
-  const [filterTemp, setFilterTemp] = useState("all");
 
   const notifications = deals
     .filter(canViewDeal)
@@ -28,15 +22,6 @@ export function Topbar({ title, subtitle }: { title: string; subtitle?: string }
     event.preventDefault();
     const query = search.trim();
     if (query) navigate(`/conversas?q=${encodeURIComponent(query)}`);
-  };
-
-  const applyFilters = () => {
-    const params = new URLSearchParams();
-    if (filterSeller !== "all") params.set("seller", filterSeller);
-    if (filterStage !== "all") params.set("stage", filterStage);
-    if (filterTemp !== "all") params.set("temp", filterTemp);
-    navigate(`/relatorios${params.toString() ? `?${params.toString()}` : ""}`);
-    setFiltersOpen(false);
   };
 
   return (
@@ -60,11 +45,6 @@ export function Topbar({ title, subtitle }: { title: string; subtitle?: string }
         </form>
 
         <div className="flex items-center justify-end gap-3">
-          {isAdmin && (
-            <Button variant="outline" size="icon" className="rounded-xl" onClick={() => setFiltersOpen(true)}>
-              <Filter className="w-4 h-4" />
-            </Button>
-          )}
           <Button variant="outline" size="icon" className="rounded-xl relative" onClick={() => setNotificationsOpen(true)}>
             <Bell className="w-4 h-4" />
             {notifications.length > 0 && <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-destructive" />}
@@ -114,49 +94,6 @@ export function Topbar({ title, subtitle }: { title: string; subtitle?: string }
                 Nenhuma notificação pendente.
               </div>
             )}
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={filtersOpen} onOpenChange={setFiltersOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="font-display">Filtros rápidos</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div>
-              <Label>Vendedora</Label>
-              <Select value={filterSeller} onValueChange={setFilterSeller}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todas</SelectItem>
-                  {teamUsers.filter(user => user.active).map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Status</Label>
-              <Select value={filterStage} onValueChange={setFilterStage}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos</SelectItem>
-                  {stages.map(s => <SelectItem key={s.id} value={s.id}>{s.title}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Temperatura</Label>
-              <Select value={filterTemp} onValueChange={setFilterTemp}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todas</SelectItem>
-                  <SelectItem value="quente">Quente</SelectItem>
-                  <SelectItem value="morno">Morno</SelectItem>
-                  <SelectItem value="frio">Frio</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <Button className="w-full bg-gradient-primary" onClick={applyFilters}>Aplicar filtros em relatórios</Button>
           </div>
         </DialogContent>
       </Dialog>

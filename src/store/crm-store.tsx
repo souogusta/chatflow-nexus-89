@@ -1,5 +1,8 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import { Deal, DealStage, INITIAL_DEALS, INITIAL_AGENTS, Agent, ALL_TAGS, STAGES, Stage, SELLERS } from "@/lib/mock-data";
+import { createAuthToken, verifyAuthToken } from "@/lib/auth-token";
+import { Deal, DealStage, INITIAL_DEALS, INITIAL_AGENTS, Agent, ALL_TAGS, STAGES, Stage } from "@/lib/mock-data";
+import { hashPassword, verifyPassword } from "@/lib/password";
+import usersData from "@/banco-de-dados/users.json";
 
 interface FinishedDeal {
   dealId: string;
@@ -37,7 +40,9 @@ export type TeamUser = {
   email: string;
   phone?: string;
   role: string;
-  password: string;
+  password?: string;
+  passwordHash?: string;
+  passwordSalt?: string;
   active: boolean;
 };
 
@@ -77,8 +82,9 @@ interface CRMCtx {
   accountProfile: AccountProfile;
   setAccountProfile: React.Dispatch<React.SetStateAction<AccountProfile>>;
   currentUser: TeamUser | null;
+  authReady: boolean;
   isAdmin: boolean;
-  login: (identifier: string, password: string) => boolean;
+  login: (identifier: string, password: string) => Promise<boolean>;
   logout: () => void;
   hasPermission: (permission: PermissionKey) => boolean;
   canViewDeal: (deal: Deal) => boolean;
@@ -143,30 +149,8 @@ const INITIAL_APPOINTMENTS: Appointment[] = [
   },
 ];
 
-const adminUser: TeamUser = {
-  id: "admin",
-  name: "Administrador",
-  username: "admin",
-  avatar: "AD",
-  email: "admin@empresa.com",
-  phone: "",
-  role: "Administrador",
-  password: "admin123",
-  active: true,
-};
-
-const initialTeamUsers: TeamUser[] = [
-  adminUser,
-  ...SELLERS.map((seller, index) => ({
-    ...seller,
-    username: seller.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").split(" ")[0],
-    email: `${seller.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(" ", ".")}@empresa.com`,
-    phone: index === 0 ? "+55 11 98765-4321" : "",
-    role: "Vendedora",
-    password: index === 0 ? "ana123" : "123456",
-    active: true,
-  })),
-];
+const initialTeamUsers = usersData as TeamUser[];
+const adminUser = initialTeamUsers.find(user => user.id === "admin") || initialTeamUsers[0];
 
 const initialAccountProfile: AccountProfile = {
   name: adminUser.name,
@@ -179,11 +163,11 @@ const initialAccountProfile: AccountProfile = {
 
 const normalizeTeamUsers = (users: TeamUser[]) => {
   const withRequiredFields = users.map(user => {
-    const isLegacyUser = !user.password;
+    const isLegacyUser = !user.passwordHash && !user.password;
     return {
       ...user,
       role: user.id !== "admin" && isLegacyUser && user.role === "Administrador" ? "Vendedora" : user.role,
-      password: user.password || (user.id === "admin" ? "admin123" : "123456"),
+      password: user.password,
       username: user.username || (user.id === "admin" ? "admin" : user.email.split("@")[0]),
     };
   });
@@ -210,7 +194,9 @@ export function CRMProvider({ children }: { children: ReactNode }) {
   const [stages, setStages] = useState<Stage[]>(() => loadStored("crm-stages", STAGES));
   const [appointments, setAppointments] = useState<Appointment[]>(() => loadStored("crm-appointments", INITIAL_APPOINTMENTS));
   const [teamUsers, setTeamUsers] = useState<TeamUser[]>(() => normalizeTeamUsers(loadStored("crm-team-users", initialTeamUsers)));
-  const [currentUserId, setCurrentUserId] = useState<string | null>(() => loadStored("crm-current-user-id", null));
+  const [authToken, setAuthToken] = useState<string | null>(() => loadStored("crm-auth-token", null));
+  const [authReady, setAuthReady] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [accountProfile, setAccountProfile] = useState<AccountProfile>(() => loadStored("crm-account-profile", initialAccountProfile));
 
   const currentUser = teamUsers.find(user => user.id === currentUserId && user.active) || null;
@@ -237,32 +223,97 @@ export function CRMProvider({ children }: { children: ReactNode }) {
   }, [accountProfile]);
 
   useEffect(() => {
-    if (currentUserId) {
-      window.localStorage.setItem("crm-current-user-id", JSON.stringify(currentUserId));
+    if (authToken) {
+      window.localStorage.setItem("crm-auth-token", JSON.stringify(authToken));
     } else {
+      window.localStorage.removeItem("crm-auth-token");
       window.localStorage.removeItem("crm-current-user-id");
     }
-  }, [currentUserId]);
+  }, [authToken]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!authToken) {
+      setCurrentUserId(null);
+      setAuthReady(true);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setAuthReady(false);
+    verifyAuthToken(authToken).then(payload => {
+      if (cancelled) return;
+      if (!payload) {
+        setCurrentUserId(null);
+        setAuthToken(null);
+      } else {
+        setCurrentUserId(payload.sub);
+      }
+      setAuthReady(true);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authToken]);
 
   useEffect(() => {
     if (currentUser) setAccountProfile(profileFromUser(currentUser));
   }, [currentUser]);
 
-  const login = (identifier: string, password: string) => {
+  useEffect(() => {
+    let cancelled = false;
+    const legacyUsers = teamUsers.filter(user => user.password);
+
+    if (!legacyUsers.length) return;
+
+    Promise.all(teamUsers.map(async user => {
+      if (!user.password) return user;
+      const { passwordHash, passwordSalt } = await hashPassword(user.password);
+      const { password: _password, ...userWithoutPassword } = user;
+      return { ...userWithoutPassword, passwordHash, passwordSalt };
+    })).then(nextUsers => {
+      if (!cancelled) setTeamUsers(nextUsers);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [teamUsers]);
+
+  const login = async (identifier: string, password: string) => {
     const normalizedIdentifier = identifier.trim().toLowerCase();
-    const user = teamUsers.find(item =>
+    const matchingUsers = teamUsers.filter(item =>
       item.active &&
-      item.password === password &&
       [item.username, item.email, item.name].filter(Boolean).some(value => value?.toLowerCase() === normalizedIdentifier)
     );
+    let user: TeamUser | undefined;
+
+    for (const item of matchingUsers) {
+      const validPassword = item.password
+        ? item.password === password
+        : await verifyPassword(password, item.passwordHash, item.passwordSalt);
+      if (validPassword) {
+        user = item;
+        break;
+      }
+    }
 
     if (!user) return false;
+    const token = await createAuthToken(user);
+    setAuthToken(token);
     setCurrentUserId(user.id);
+    setAuthReady(true);
     setAccountProfile(profileFromUser(user));
     return true;
   };
 
-  const logout = () => setCurrentUserId(null);
+  const logout = () => {
+    setCurrentUserId(null);
+    setAuthToken(null);
+  };
 
   const hasPermission = (permission: PermissionKey) => {
     if (!currentUser) return false;
@@ -347,7 +398,7 @@ export function CRMProvider({ children }: { children: ReactNode }) {
     setAppointments(prev => prev.filter(appointment => appointment.id !== id));
 
   return (
-    <Ctx.Provider value={{ deals, setDeals, addDeal, moveDeal, updateDeal, stages, addStage, updateStage, moveStage, reorderStage, removeStage, appointments, addAppointment, updateAppointment, removeAppointment, finished, finishDeal, agents, setAgents, tags, setTags, teamUsers, setTeamUsers, accountProfile, setAccountProfile, currentUser, isAdmin, login, logout, hasPermission, canViewDeal }}>
+    <Ctx.Provider value={{ deals, setDeals, addDeal, moveDeal, updateDeal, stages, addStage, updateStage, moveStage, reorderStage, removeStage, appointments, addAppointment, updateAppointment, removeAppointment, finished, finishDeal, agents, setAgents, tags, setTags, teamUsers, setTeamUsers, accountProfile, setAccountProfile, currentUser, authReady, isAdmin, login, logout, hasPermission, canViewDeal }}>
       {children}
     </Ctx.Provider>
   );

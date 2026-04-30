@@ -8,15 +8,16 @@ import { Label } from "@/components/ui/label";
 import { useCRM } from "@/store/crm-store";
 
 export default function Login() {
-  const { currentUser, login } = useCRM();
+  const { currentUser, authReady, login } = useCRM();
   const [identifier, setIdentifier] = useState("admin");
-  const [password, setPassword] = useState("admin123");
+  const [password, setPassword] = useState("");
 
+  if (!authReady) return null;
   if (currentUser) return <Navigate to="/" replace />;
 
-  const handleSubmit = (event: FormEvent) => {
+  const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
-    if (login(identifier, password)) {
+    if (await login(identifier, password)) {
       toast.success("Login realizado");
       return;
     }
@@ -32,7 +33,7 @@ export default function Login() {
           </div>
           <div>
             <h1 className="font-display text-xl font-bold">Entrar no CRM</h1>
-            <p className="text-xs text-muted-foreground">Use admin / admin123 para o primeiro acesso.</p>
+            <p className="text-xs text-muted-foreground">Informe suas credenciais para acessar.</p>
           </div>
         </div>
 

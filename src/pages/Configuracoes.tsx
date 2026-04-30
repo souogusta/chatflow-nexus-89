@@ -9,6 +9,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { TeamUser, useCRM } from "@/store/crm-store";
+import { hashPassword } from "@/lib/password";
 import { Plus, Trash2, Pencil, Check, X, MessageSquare, Bot, Webhook, FileSpreadsheet, Cable } from "lucide-react";
 import { toast } from "sonner";
 
@@ -55,7 +56,7 @@ const emptyUser: TeamUser = {
   email: "",
   phone: "",
   role: "Vendedora",
-  password: "123456",
+  password: "",
   active: true,
 };
 
@@ -73,21 +74,23 @@ export default function Configuracoes() {
   };
 
   const openEditUser = (user: TeamUser) => {
-    setEditingUser(user);
+    setEditingUser({ ...user, password: "" });
     setUserDialogOpen(true);
   };
 
-  const saveUser = () => {
+  const saveUser = async () => {
     if (!editingUser.name.trim()) return toast.error("Informe o nome do usuário");
     if (!editingUser.email.trim()) return toast.error("Informe o e-mail do usuário");
-    if (!editingUser.password.trim()) return toast.error("Informe a senha do usuário");
+    if (editingUser.id === "new" && !editingUser.password?.trim()) return toast.error("Informe a senha do usuário");
     const avatar = editingUser.avatar.trim() || initialsFromName(editingUser.name);
     const username = editingUser.username?.trim() || editingUser.email.split("@")[0];
+    const passwordPatch = editingUser.password?.trim() ? await hashPassword(editingUser.password) : {};
+    const { password: _password, ...userWithoutPassword } = editingUser;
     if (editingUser.id === "new") {
-      setUsers(prev => [...prev, { ...editingUser, id: `u${Date.now()}`, avatar, username }]);
+      setUsers(prev => [...prev, { ...userWithoutPassword, ...passwordPatch, id: `u${Date.now()}`, avatar, username }]);
       toast.success("Usuário criado");
     } else {
-      const updatedUser = { ...editingUser, avatar, username };
+      const updatedUser = { ...userWithoutPassword, ...passwordPatch, avatar, username };
       setUsers(prev => prev.map(user => user.id === editingUser.id ? updatedUser : user));
       if (editingUser.id === currentUser?.id) {
         setAccountProfile(prev => ({
@@ -308,7 +311,7 @@ export default function Configuracoes() {
             </div>
             <div>
               <Label htmlFor="userPassword">Senha *</Label>
-              <Input id="userPassword" type="password" value={editingUser.password} onChange={event => setEditingUser({ ...editingUser, password: event.target.value })} />
+              <Input id="userPassword" type="password" value={editingUser.password || ""} onChange={event => setEditingUser({ ...editingUser, password: event.target.value })} />
             </div>
             <div>
               <Label htmlFor="userPhone">Telefone</Label>

@@ -11,7 +11,8 @@ import { NewDealModal } from "@/components/kanban/NewDealModal";
 import { StageManagerDialog } from "@/components/kanban/StageManagerDialog";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Filter, Plus, Settings2 } from "lucide-react";
+import { ChevronDown, Plus, Settings2 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -26,14 +27,37 @@ export default function Kanban() {
   const [finishOpen, setFinishOpen] = useState(false);
   const [newDealOpen, setNewDealOpen] = useState(false);
   const [stagesOpen, setStagesOpen] = useState(false);
-  const [filterSeller, setFilterSeller] = useState("all");
-  const [filterTag, setFilterTag] = useState("all");
+  const [filterSellerIds, setFilterSellerIds] = useState<string[]>([]);
+  const [filterTags, setFilterTags] = useState<string[]>([]);
   const [filterWaiting, setFilterWaiting] = useState("all");
   const [filterStart, setFilterStart] = useState("");
   const [filterEnd, setFilterEnd] = useState("");
   const selectedDeal = selected ? deals.find(deal => deal.id === selected.id) || selected : null;
-  const activeFilters = [filterSeller !== "all", filterTag !== "all", filterWaiting !== "all", Boolean(filterStart), Boolean(filterEnd)]
+  const sellerOptions = useMemo(() => teamUsers.filter(user => user.active && user.role !== "Administrador"), [teamUsers]);
+  const activeFilters = [filterSellerIds.length > 0, filterTags.length > 0, filterWaiting !== "all", Boolean(filterStart), Boolean(filterEnd)]
     .filter(Boolean).length;
+  const sellerFilterLabel = filterSellerIds.length === 0
+    ? "Todas"
+    : filterSellerIds.length === 1
+      ? sellerOptions.find(user => user.id === filterSellerIds[0])?.name || "1 vendedora"
+      : `${filterSellerIds.length} vendedoras`;
+  const tagFilterLabel = filterTags.length === 0
+    ? "Todas"
+    : filterTags.length === 1
+      ? filterTags[0]
+      : `${filterTags.length} tags`;
+
+  const toggleSellerFilter = (sellerId: string) => {
+    setFilterSellerIds(current => current.includes(sellerId)
+      ? current.filter(id => id !== sellerId)
+      : [...current, sellerId]);
+  };
+
+  const toggleTagFilter = (tag: string) => {
+    setFilterTags(current => current.includes(tag)
+      ? current.filter(item => item !== tag)
+      : [...current, tag]);
+  };
 
   const visibleDeals = useMemo(() => {
     const start = filterStart ? new Date(`${filterStart}T00:00:00`).getTime() : null;
@@ -42,13 +66,13 @@ export default function Kanban() {
     return deals.filter(deal => {
       const interaction = new Date(deal.lastInteraction).getTime();
       return canViewDeal(deal)
-        && (!isAdmin || filterSeller === "all" || deal.sellerId === filterSeller)
-        && (!isAdmin || filterTag === "all" || deal.tags.includes(filterTag))
+        && (!isAdmin || filterSellerIds.length === 0 || filterSellerIds.includes(deal.sellerId))
+        && (!isAdmin || filterTags.length === 0 || filterTags.some(tag => deal.tags.includes(tag)))
         && (!isAdmin || filterWaiting === "all" || (filterWaiting === "cliente-aguardando" ? deal.unread : !deal.unread))
         && (!isAdmin || !start || interaction >= start)
         && (!isAdmin || !end || interaction <= end);
     });
-  }, [canViewDeal, deals, filterEnd, filterSeller, filterStart, filterTag, filterWaiting, isAdmin]);
+  }, [canViewDeal, deals, filterEnd, filterSellerIds, filterStart, filterTags, filterWaiting, isAdmin]);
 
   const grouped = useMemo(() => {
     const map = new Map<DealStage, Deal[]>();
@@ -70,6 +94,10 @@ export default function Kanban() {
   }, [appointments]);
 
   const handleRemoveStage = (id: string, title: string, count: number) => {
+    if (!isAdmin) {
+      toast.error("Somente administradores editam etapas");
+      return;
+    }
     if (id === "fechado" || id === "perdido") {
       toast.error("Esta etapa é usada para finalizar atendimentos e não pode ser removida");
       return;
@@ -84,10 +112,6 @@ export default function Kanban() {
 
   const handleDragEnd = (e: DragEndEvent) => {
     const dealId = e.active.id as string;
-    if (!isAdmin) {
-      toast.error("Somente administradores alteram o funil");
-      return;
-    }
     const newStage = e.over?.id as DealStage | undefined;
     if (!newStage) return;
     const deal = visibleDeals.find(d => d.id === dealId);
@@ -126,7 +150,7 @@ export default function Kanban() {
               <Popover>
                 <PopoverTrigger asChild>
                   <Button variant="outline" size="icon" className="relative" title="Filtros">
-                    <Filter className="h-4 w-4" />
+                    <Settings2 className="h-4 w-4" />
                     {activeFilters > 0 && (
                       <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
                         {activeFilters}
@@ -152,23 +176,55 @@ export default function Kanban() {
                     </div>
                     <div>
                       <Label className="text-xs">Vendedora</Label>
-                      <Select value={filterSeller} onValueChange={setFilterSeller}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">Todas</SelectItem>
-                          {teamUsers.filter(user => user.active && user.role !== "Administrador").map(user => <SelectItem key={user.id} value={user.id}>{user.name}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button variant="outline" className="h-10 w-full justify-between bg-background font-normal">
+                            <span className="truncate">{sellerFilterLabel}</span>
+                            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent align="start" className="w-[300px] p-2">
+                          <label className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm hover:bg-secondary">
+                            <Checkbox checked={filterSellerIds.length === 0} onCheckedChange={() => setFilterSellerIds([])} aria-label="Selecionar todas vendedoras" />
+                            <span>Todas</span>
+                          </label>
+                          <div className="my-1 h-px bg-border" />
+                          <div className="max-h-48 overflow-y-auto pr-1">
+                            {sellerOptions.map(user => (
+                              <label key={user.id} className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm hover:bg-secondary">
+                                <Checkbox checked={filterSellerIds.includes(user.id)} onCheckedChange={() => toggleSellerFilter(user.id)} aria-label={`Selecionar ${user.name}`} />
+                                <span className="truncate">{user.name}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </PopoverContent>
+                      </Popover>
                     </div>
                     <div>
                       <Label className="text-xs">Tag</Label>
-                      <Select value={filterTag} onValueChange={setFilterTag}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">Todas</SelectItem>
-                          {tags.map(tag => <SelectItem key={tag} value={tag}>{tag}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button variant="outline" className="h-10 w-full justify-between bg-background font-normal">
+                            <span className="truncate">{tagFilterLabel}</span>
+                            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent align="start" className="w-[300px] p-2">
+                          <label className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm hover:bg-secondary">
+                            <Checkbox checked={filterTags.length === 0} onCheckedChange={() => setFilterTags([])} aria-label="Selecionar todas tags" />
+                            <span>Todas</span>
+                          </label>
+                          <div className="my-1 h-px bg-border" />
+                          <div className="max-h-48 overflow-y-auto pr-1">
+                            {tags.map(tag => (
+                              <label key={tag} className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm hover:bg-secondary">
+                                <Checkbox checked={filterTags.includes(tag)} onCheckedChange={() => toggleTagFilter(tag)} aria-label={`Selecionar tag ${tag}`} />
+                                <span className="truncate">{tag}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </PopoverContent>
+                      </Popover>
                     </div>
                     <div>
                       <Label className="text-xs">Retorno</Label>
@@ -181,15 +237,17 @@ export default function Kanban() {
                         </SelectContent>
                       </Select>
                     </div>
-                    <Button variant="outline" className="w-full" onClick={() => { setFilterStart(""); setFilterEnd(""); setFilterSeller("all"); setFilterTag("all"); setFilterWaiting("all"); }}>
+                    <Button variant="outline" className="w-full" onClick={() => { setFilterStart(""); setFilterEnd(""); setFilterSellerIds([]); setFilterTags([]); setFilterWaiting("all"); }}>
                       Limpar filtros
                     </Button>
                   </div>
                 </PopoverContent>
               </Popover>
-              <Button variant="outline" className="gap-2" onClick={() => setStagesOpen(true)}>
-                <Settings2 className="w-4 h-4" /> Organizar etapas
-              </Button>
+              {stages.length === 0 && (
+                <Button variant="outline" size="icon" title="Adicionar etapa" onClick={() => setStagesOpen(true)}>
+                  <Plus className="h-4 w-4" />
+                </Button>
+              )}
             </>
           )}
           <Button className="bg-gradient-primary gap-2" onClick={() => setNewDealOpen(true)}>
@@ -211,11 +269,12 @@ export default function Kanban() {
               color={s.color}
               count={grouped.get(s.id)?.length || 0}
               totalValue={(grouped.get(s.id) || []).reduce((sum, deal) => sum + (deal.estimatedValue || 0), 0)}
+              canManageStages={isAdmin}
               onRename={() => setStagesOpen(true)}
               onRemove={() => handleRemoveStage(s.id, s.title, grouped.get(s.id)?.length || 0)}
             >
               {grouped.get(s.id)?.map(d => (
-                <KanbanCard key={d.id} deal={d} nextAppointment={nextAppointmentByDeal.get(d.id)} draggable={isAdmin} onClick={() => { setSelected(d); setSheetOpen(true); }} />
+                <KanbanCard key={d.id} deal={d} nextAppointment={nextAppointmentByDeal.get(d.id)} draggable onClick={() => { setSelected(d); setSheetOpen(true); }} />
               ))}
             </KanbanColumn>
           ))}

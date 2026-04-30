@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { LayoutDashboard, Kanban, MessageSquare, CalendarDays, Bot, BarChart3, Settings, Sparkles } from "lucide-react";
+import { LayoutDashboard, Kanban, MessageSquare, CalendarDays, Bot, BarChart3, Settings, Sparkles, Smartphone, Megaphone, Send } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PermissionKey, useCRM } from "@/store/crm-store";
 
@@ -9,6 +9,9 @@ const items: { to: string; label: string; icon: typeof LayoutDashboard; end?: bo
   { to: "/conversas", label: "Conversas", icon: MessageSquare },
   { to: "/calendario", label: "Calendario", icon: CalendarDays },
   { to: "/agentes", label: "Agentes", icon: Bot, permission: "Criar agentes" },
+  { to: "/instancias", label: "Instancias", icon: Smartphone, permission: "Alterar configurações da empresa" },
+  { to: "/campanhas", label: "Campanha", icon: Megaphone },
+  { to: "/disparo-em-massa", label: "Disparo em massa", icon: Send, permission: "Alterar configurações da empresa" },
   { to: "/relatorios", label: "Relatorios", icon: BarChart3, permission: "Ver relatórios" },
   { to: "/configuracoes", label: "Configuracoes", icon: Settings, permission: "Alterar configurações da empresa" },
 ];

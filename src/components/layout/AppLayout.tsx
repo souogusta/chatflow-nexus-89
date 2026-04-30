@@ -5,8 +5,9 @@ import { Topbar } from "./Topbar";
 import { useCRM } from "@/store/crm-store";
 
 export function AppLayout({ children, title, subtitle }: { children: ReactNode; title: string; subtitle?: string }) {
-  const { currentUser } = useCRM();
+  const { currentUser, authReady } = useCRM();
 
+  if (!authReady) return null;
   if (!currentUser) return <Navigate to="/login" replace />;
 
   return (

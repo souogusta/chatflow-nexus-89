@@ -6,12 +6,13 @@ import { Pencil, Trash2 } from "lucide-react";
 
 const formatBRL = (value: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
 
-export function KanbanColumn({ id, title, count, color, totalValue, onRename, onRemove, children }: {
+export function KanbanColumn({ id, title, count, color, totalValue, canManageStages = false, onRename, onRemove, children }: {
   id: string;
   title: string;
   count: number;
   color: string;
   totalValue: number;
+  canManageStages?: boolean;
   onRename: () => void;
   onRemove: () => void;
   children: ReactNode;
@@ -25,14 +26,16 @@ export function KanbanColumn({ id, title, count, color, totalValue, onRename, on
         <div className="relative flex min-h-7 items-center justify-center px-14">
           {showStatusDot && <div className={cn("absolute left-0 w-2 h-2 rounded-full", color)} />}
           <h3 className="min-w-0 max-w-full text-center text-sm font-semibold leading-tight truncate">{title}</h3>
-          <div className="absolute right-0 flex justify-end gap-1">
-            <Button type="button" size="icon" variant="ghost" className="h-6 w-6" title="Editar etapa" onClick={onRename}>
-              <Pencil className="h-3.5 w-3.5" />
-            </Button>
-            <Button type="button" size="icon" variant="ghost" className="h-6 w-6 text-muted-foreground hover:text-destructive" title="Remover etapa" onClick={onRemove}>
-              <Trash2 className="h-3.5 w-3.5" />
-            </Button>
-          </div>
+          {canManageStages && (
+            <div className="absolute right-0 flex justify-end gap-1">
+              <Button type="button" size="icon" variant="ghost" className="h-6 w-6" title="Editar etapa" onClick={onRename}>
+                <Pencil className="h-3.5 w-3.5" />
+              </Button>
+              <Button type="button" size="icon" variant="ghost" className="h-6 w-6 text-muted-foreground hover:text-destructive" title="Remover etapa" onClick={onRemove}>
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          )}
         </div>
         {id === "fechado" && (
           <div className="mt-1 text-center text-[11px] font-medium text-muted-foreground">

@@ -9,6 +9,9 @@ import Kanban from "./pages/Kanban";
 import Conversas from "./pages/Conversas";
 import Calendario from "./pages/Calendario";
 import Agentes from "./pages/Agentes";
+import Instancias from "./pages/Instancias";
+import Campanhas from "./pages/Campanhas";
+import DisparoEmMassa from "./pages/DisparoEmMassa";
 import Relatorios from "./pages/Relatorios";
 import Configuracoes from "./pages/Configuracoes";
 import Login from "./pages/Login";
@@ -30,6 +33,9 @@ const App = () => (
             <Route path="/conversas" element={<Conversas />} />
             <Route path="/calendario" element={<Calendario />} />
             <Route path="/agentes" element={<Agentes />} />
+            <Route path="/instancias" element={<Instancias />} />
+            <Route path="/campanhas" element={<Campanhas />} />
+            <Route path="/disparo-em-massa" element={<DisparoEmMassa />} />
             <Route path="/relatorios" element={<Relatorios />} />
             <Route path="/configuracoes" element={<Configuracoes />} />
             <Route path="*" element={<NotFound />} />

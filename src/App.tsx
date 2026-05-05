@@ -13,6 +13,7 @@ import Instancias from "./pages/Instancias";
 import Campanhas from "./pages/Campanhas";
 import DisparoEmMassa from "./pages/DisparoEmMassa";
 import Relatorios from "./pages/Relatorios";
+import Usuarios from "./pages/Usuarios";
 import Configuracoes from "./pages/Configuracoes";
 import Login from "./pages/Login";
 import NotFound from "./pages/NotFound.tsx";
@@ -37,6 +38,7 @@ const App = () => (
             <Route path="/campanhas" element={<Campanhas />} />
             <Route path="/disparo-em-massa" element={<DisparoEmMassa />} />
             <Route path="/relatorios" element={<Relatorios />} />
+            <Route path="/usuarios" element={<Usuarios />} />
             <Route path="/configuracoes" element={<Configuracoes />} />
             <Route path="*" element={<NotFound />} />
           </Routes>

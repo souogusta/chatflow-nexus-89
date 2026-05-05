@@ -44,6 +44,10 @@ export type TeamUser = {
   passwordHash?: string;
   passwordSalt?: string;
   active: boolean;
+  allowedTags?: string[];
+  allowedConversationIds?: string[];
+  allowedInstanceIds?: string[];
+  receivesNewLeads?: boolean;
 };
 
 export type AccountProfile = {
@@ -97,6 +101,7 @@ export const PERMISSIONS = [
   "Ver todos os atendimentos",
   "Ver apenas próprios atendimentos",
   "Editar funil",
+  "Editar atendimentos",
   "Finalizar venda",
   "Criar agentes",
   "Editar agentes",
@@ -169,6 +174,10 @@ const normalizeTeamUsers = (users: TeamUser[]) => {
       role: user.id !== "admin" && isLegacyUser && user.role === "Administrador" ? "Vendedora" : user.role,
       password: user.password,
       username: user.username || (user.id === "admin" ? "admin" : user.email.split("@")[0]),
+      allowedTags: user.allowedTags || [],
+      allowedConversationIds: user.allowedConversationIds || [],
+      allowedInstanceIds: user.allowedInstanceIds || [],
+      receivesNewLeads: user.receivesNewLeads ?? user.role === "Vendedora",
     };
   });
 
@@ -321,7 +330,17 @@ export function CRMProvider({ children }: { children: ReactNode }) {
     return (DEFAULT_PERMISSIONS[currentUser.role] || []).includes(permission);
   };
 
-  const canViewDeal = (deal: Deal) => hasPermission("Ver todos os atendimentos") || deal.sellerId === currentUser?.id;
+  const canViewDeal = (deal: Deal) => {
+    if (!currentUser) return false;
+    if (currentUser.role === "Administrador" || hasPermission("Ver todos os atendimentos")) return true;
+
+    const assignedSellerIds = Array.from(new Set([deal.sellerId, ...(deal.assignedSellerIds || [])].filter(Boolean)));
+    const hasDirectAccess = assignedSellerIds.includes(currentUser.id);
+    const hasConversationAccess = Boolean(currentUser.allowedConversationIds?.includes(deal.id));
+    const hasTagAccess = currentUser.allowedTags?.length ? deal.tags.some(tag => currentUser.allowedTags?.includes(tag)) : false;
+
+    return hasDirectAccess || hasConversationAccess || hasTagAccess;
+  };
 
   const addDeal = (deal: Deal) => setDeals(prev => [deal, ...prev]);
   const moveDeal = (id: string, stage: DealStage) =>

@@ -3,10 +3,9 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useCRM } from "@/store/crm-store";
-import { AlertTriangle, Bot, CreditCard, FileSpreadsheet, LockKeyhole, MessageSquare, Send, Upload } from "lucide-react";
+import { AlertTriangle, Bot, CreditCard, Download, FileSpreadsheet, LockKeyhole, MessageSquare, Send, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 const COST_PER_MESSAGE = 0.2;
@@ -19,13 +18,36 @@ const sampleRows = [
 const formatBRL = (value: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
 
+const csvEscape = (value: string | number) => `"${String(value).replaceAll('"', '""')}"`;
+
+const downloadCsv = (filename: string, rows: Array<Array<string | number>>) => {
+  const csv = rows.map(row => row.map(csvEscape).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+};
+
 export default function DisparoEmMassa() {
   const { isAdmin } = useCRM();
   const [fileName, setFileName] = useState("");
   const [estimatedRows, setEstimatedRows] = useState(0);
   const [message, setMessage] = useState("Oi {{Nome}}, tudo bem? Temos uma oportunidade especial para voce sobre {{Campo1}}. Toque no botao abaixo para falar com nossa equipe.");
   const [buttonName, setButtonName] = useState("Falar com a clinica");
-  const [targetInstance, setTargetInstance] = useState("principal");
+  const [targetNumber, setTargetNumber] = useState("+55 11 98888-0101");
+  const [lastReport, setLastReport] = useState<{
+    createdAt: string;
+    fileName: string;
+    targetNumber: string;
+    contacts: number;
+    estimatedCost: number;
+    buttonName: string;
+  } | null>(null);
   const totalCost = useMemo(() => estimatedRows * COST_PER_MESSAGE, [estimatedRows]);
 
   const handleFile = (event: ChangeEvent<HTMLInputElement>) => {
@@ -46,7 +68,32 @@ export default function DisparoEmMassa() {
     if (!fileName) return toast.error("Suba uma planilha antes de preparar o disparo");
     if (!message.trim()) return toast.error("Informe a mensagem do disparo");
     if (!buttonName.trim()) return toast.error("Informe o nome do botao");
+    if (!targetNumber.trim()) return toast.error("Informe o numero da instancia de destino");
+    setLastReport({
+      createdAt: new Date().toISOString(),
+      fileName,
+      targetNumber: targetNumber.trim(),
+      contacts: estimatedRows,
+      estimatedCost: totalCost,
+      buttonName: buttonName.trim(),
+    });
     toast.success("Disparo preparado para revisao");
+  };
+
+  const downloadReport = () => {
+    if (!lastReport) return;
+    downloadCsv("relatorio-disparo-em-massa.csv", [
+      ["data", "arquivo", "instancia_destino", "contatos", "custo_por_envio", "custo_estimado", "botao"],
+      [
+        new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(lastReport.createdAt)),
+        lastReport.fileName,
+        lastReport.targetNumber,
+        lastReport.contacts,
+        formatBRL(COST_PER_MESSAGE),
+        formatBRL(lastReport.estimatedCost),
+        lastReport.buttonName,
+      ],
+    ]);
   };
 
   if (!isAdmin) {
@@ -124,15 +171,8 @@ export default function DisparoEmMassa() {
                 <Input value={buttonName} onChange={event => setButtonName(event.target.value)} />
               </div>
               <div>
-                <Label>Instancia de destino</Label>
-                <Select value={targetInstance} onValueChange={setTargetInstance}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="principal">WhatsApp Clinica Principal</SelectItem>
-                    <SelectItem value="comercial">WhatsApp Comercial</SelectItem>
-                    <SelectItem value="avaliacao">WhatsApp Avaliacao</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Label>Numero da instancia de destino</Label>
+                <Input value={targetNumber} onChange={event => setTargetNumber(event.target.value)} placeholder="+55 11 99999-0000" />
               </div>
             </div>
           </div>
@@ -184,6 +224,42 @@ export default function DisparoEmMassa() {
             </Button>
           </div>
         </div>
+      </section>
+
+      <section className="card-elevated p-6">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="font-display text-base font-bold">Relatorio do disparo</h2>
+            <p className="text-sm text-muted-foreground">Resumo operacional do ultimo disparo preparado.</p>
+          </div>
+          <Button variant="outline" className="gap-2" onClick={downloadReport} disabled={!lastReport}>
+            <Download className="h-4 w-4" /> Baixar CSV
+          </Button>
+        </div>
+        {lastReport ? (
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+            <div className="rounded-xl bg-secondary p-4">
+              <div className="text-[10px] font-semibold uppercase text-muted-foreground">arquivo</div>
+              <div className="mt-1 truncate text-sm font-semibold">{lastReport.fileName}</div>
+            </div>
+            <div className="rounded-xl bg-secondary p-4">
+              <div className="text-[10px] font-semibold uppercase text-muted-foreground">destino</div>
+              <div className="mt-1 truncate text-sm font-semibold">{lastReport.targetNumber}</div>
+            </div>
+            <div className="rounded-xl bg-secondary p-4">
+              <div className="text-[10px] font-semibold uppercase text-muted-foreground">contatos</div>
+              <div className="mt-1 text-sm font-semibold">{lastReport.contacts}</div>
+            </div>
+            <div className="rounded-xl bg-secondary p-4">
+              <div className="text-[10px] font-semibold uppercase text-muted-foreground">custo estimado</div>
+              <div className="mt-1 text-sm font-semibold">{formatBRL(lastReport.estimatedCost)}</div>
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-xl border border-dashed border-border bg-background p-5 text-sm text-muted-foreground">
+            Prepare um disparo para gerar o relatorio.
+          </div>
+        )}
       </section>
     </AppLayout>
   );

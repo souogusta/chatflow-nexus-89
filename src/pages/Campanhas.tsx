@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useCRM } from "@/store/crm-store";
 import { cn } from "@/lib/utils";
-import { BadgeCheck, MessageSquareText, Send } from "lucide-react";
+import { BadgeCheck, Download, MessageSquareText, Pause, Play, RotateCcw, Send, Square } from "lucide-react";
 import { toast } from "sonner";
 
 type CampaignStatus = "rodando" | "pausada" | "finalizada";
@@ -20,17 +20,27 @@ type CampaignSummary = {
   sent: number;
   responses: number;
   status: CampaignStatus;
+  createdAt: string;
+  message: string;
+  reportRows: CampaignReportRow[];
+};
+
+type CampaignReportRow = {
+  name: string;
+  phone: string;
+  origin: string;
+  status: string;
 };
 
 const runningCampaigns: CampaignSummary[] = [
-  { id: "c1", name: "Retorno leads quentes", audience: 64, sent: 42, responses: 13, status: "rodando" },
-  { id: "c2", name: "Orcamento sem resposta", audience: 38, sent: 38, responses: 7, status: "pausada" },
+  { id: "c1", name: "Retorno leads quentes", audience: 64, sent: 42, responses: 13, status: "rodando", createdAt: "2026-04-30T09:10:00", message: "Retorno para leads quentes", reportRows: [] },
+  { id: "c2", name: "Orcamento sem resposta", audience: 38, sent: 38, responses: 7, status: "pausada", createdAt: "2026-04-29T15:20:00", message: "Follow-up de orcamento", reportRows: [] },
 ];
 
 const previousCampaigns: CampaignSummary[] = [
-  { id: "c3", name: "Reativacao Instagram", audience: 120, sent: 120, responses: 31, status: "finalizada" },
-  { id: "c4", name: "Clientes frios 30 dias", audience: 86, sent: 86, responses: 14, status: "finalizada" },
-  { id: "c5", name: "Follow-up pos proposta", audience: 52, sent: 52, responses: 18, status: "finalizada" },
+  { id: "c3", name: "Reativacao Instagram", audience: 120, sent: 120, responses: 31, status: "finalizada", createdAt: "2026-04-26T11:00:00", message: "Reativacao de Instagram", reportRows: [] },
+  { id: "c4", name: "Clientes frios 30 dias", audience: 86, sent: 86, responses: 14, status: "finalizada", createdAt: "2026-04-22T10:30:00", message: "Clientes frios 30 dias", reportRows: [] },
+  { id: "c5", name: "Follow-up pos proposta", audience: 52, sent: 52, responses: 18, status: "finalizada", createdAt: "2026-04-18T16:40:00", message: "Follow-up pos proposta", reportRows: [] },
 ];
 
 const syntaxOptions = [
@@ -47,12 +57,54 @@ const daysSince = (value: string) => {
 const responseRate = (campaign: CampaignSummary) =>
   campaign.sent ? Math.round((campaign.responses / campaign.sent) * 100) : 0;
 
+const parseCsvNumbers = (value: string) =>
+  Array.from(new Set(value.split(/[\n,;]+/).map(item => item.trim()).filter(Boolean)));
+
+const csvEscape = (value: string | number) => `"${String(value).replaceAll('"', '""')}"`;
+
+const downloadCsv = (filename: string, rows: Array<Array<string | number>>) => {
+  const csv = rows.map(row => row.map(csvEscape).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+};
+
+const buildFallbackReportRows = (campaign: CampaignSummary): CampaignReportRow[] =>
+  Array.from({ length: Math.min(campaign.audience, 12) }, (_, index) => ({
+    name: `Contato ${index + 1}`,
+    phone: `+55 11 9${String(index + 1).padStart(4, "0")}-${String(1000 + index).padStart(4, "0")}`,
+    origin: campaign.name,
+    status: index < campaign.responses ? "respondeu" : "enviado",
+  }));
+
 const renderPreview = (message: string, deal?: { customer: string; phone: string }) =>
   message
     .replaceAll("{{nome_cliente}}", deal?.customer || "Marina Souza")
     .replaceAll("{{numero_cliente}}", deal?.phone || "+55 11 99999-0000");
 
-function CampaignList({ title, items }: { title: string; items: CampaignSummary[] }) {
+function CampaignList({
+  title,
+  items,
+  mode,
+  onTogglePause,
+  onStop,
+  onDownload,
+  onRedo,
+}: {
+  title: string;
+  items: CampaignSummary[];
+  mode: "running" | "previous";
+  onTogglePause?: (campaignId: string) => void;
+  onStop?: (campaignId: string) => void;
+  onDownload?: (campaign: CampaignSummary) => void;
+  onRedo?: (campaign: CampaignSummary) => void;
+}) {
   return (
     <section className="card-elevated p-5">
       <div className="mb-4 flex items-center justify-between">
@@ -85,6 +137,28 @@ function CampaignList({ title, items }: { title: string; items: CampaignSummary[
               <div className="h-2 overflow-hidden rounded-full bg-secondary">
                 <div className="h-full rounded-full bg-primary" style={{ width: `${rate}%` }} />
               </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {mode === "running" ? (
+                  <>
+                    <Button variant="outline" size="sm" className="gap-2" onClick={() => onTogglePause?.(campaign.id)}>
+                      {campaign.status === "pausada" ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
+                      {campaign.status === "pausada" ? "Continuar" : "Pausar"}
+                    </Button>
+                    <Button variant="outline" size="sm" className="gap-2" onClick={() => onStop?.(campaign.id)}>
+                      <Square className="h-4 w-4" /> Parar
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button variant="outline" size="sm" className="gap-2" onClick={() => onDownload?.(campaign)}>
+                      <Download className="h-4 w-4" /> Relatorio CSV
+                    </Button>
+                    <Button variant="outline" size="sm" className="gap-2" onClick={() => onRedo?.(campaign)}>
+                      <RotateCcw className="h-4 w-4" /> Refazer
+                    </Button>
+                  </>
+                )}
+              </div>
             </div>
           );
         })}
@@ -95,12 +169,16 @@ function CampaignList({ title, items }: { title: string; items: CampaignSummary[
 
 export default function Campanhas() {
   const { deals, tags, teamUsers, canViewDeal } = useCRM();
+  const [activeCampaigns, setActiveCampaigns] = useState<CampaignSummary[]>(runningCampaigns);
+  const [closedCampaigns, setClosedCampaigns] = useState<CampaignSummary[]>(previousCampaigns);
   const [name, setName] = useState("Remarketing sem resposta");
   const [selectedSellerIds, setSelectedSellerIds] = useState<string[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [clientFilter, setClientFilter] = useState("all");
   const [temperature, setTemperature] = useState("all");
   const [lastContact, setLastContact] = useState("all");
   const [returnStatus, setReturnStatus] = useState("all");
+  const [csvNumbers, setCsvNumbers] = useState("");
   const [message, setMessage] = useState("Oi {{nome_cliente}}, tudo bem? Vi que nosso ultimo contato ficou em aberto e queria saber se ainda posso te ajudar pelo WhatsApp {{numero_cliente}}.");
 
   const sellerOptions = useMemo(() => teamUsers.filter(user => user.active && user.role !== "Administrador"), [teamUsers]);
@@ -109,13 +187,20 @@ export default function Campanhas() {
     return canViewDeal(deal)
       && (selectedSellerIds.length === 0 || selectedSellerIds.includes(deal.sellerId))
       && (selectedTags.length === 0 || selectedTags.some(tag => deal.tags.includes(tag)))
+      && (clientFilter === "all"
+        || (clientFilter === "retornar-hoje" && deal.tags.includes("Retornar hoje"))
+        || (clientFilter === "sem-resposta" && deal.stage === "aguardando-resposta")
+        || (clientFilter === "proposta-pendente" && deal.tags.includes("Enviar proposta"))
+        || (clientFilter === "nao-lidos" && deal.unread))
       && (temperature === "all" || deal.temperature === temperature)
       && (returnStatus === "all" || (returnStatus === "cliente-aguardando" ? deal.unread : !deal.unread))
       && (lastContact === "all"
         || (lastContact === "7d" && days >= 7)
         || (lastContact === "15d" && days >= 15)
         || (lastContact === "30d" && days >= 30));
-  }), [canViewDeal, deals, lastContact, returnStatus, selectedSellerIds, selectedTags, temperature]);
+  }), [canViewDeal, clientFilter, deals, lastContact, returnStatus, selectedSellerIds, selectedTags, temperature]);
+  const importedNumbers = useMemo(() => parseCsvNumbers(csvNumbers), [csvNumbers]);
+  const totalAudience = audience.length + importedNumbers.length;
   const previewDeal = audience[0];
 
   const toggleSeller = (sellerId: string) => {
@@ -133,8 +218,75 @@ export default function Campanhas() {
   const createCampaign = () => {
     if (!name.trim()) return toast.error("Informe o nome da campanha");
     if (!message.trim()) return toast.error("Informe a mensagem da campanha");
-    if (audience.length === 0) return toast.error("Nenhum lead encontrado para estes filtros");
+    if (totalAudience === 0) return toast.error("Nenhum lead encontrado para estes filtros ou lista CSV");
+    const reportRows: CampaignReportRow[] = [
+      ...audience.map(deal => ({
+        name: deal.customer,
+        phone: deal.phone,
+        origin: "Filtro CRM",
+        status: "pendente",
+      })),
+      ...importedNumbers.map((phone, index) => ({
+        name: `CSV ${index + 1}`,
+        phone,
+        origin: "Lista CSV",
+        status: "pendente",
+      })),
+    ];
+    setActiveCampaigns(current => [{
+      id: `c-${Date.now()}`,
+      name: name.trim(),
+      audience: totalAudience,
+      sent: 0,
+      responses: 0,
+      status: "rodando",
+      createdAt: new Date().toISOString(),
+      message: message.trim(),
+      reportRows,
+    }, ...current]);
     toast.success("Campanha de remarketing preparada");
+  };
+
+  const toggleCampaignPause = (campaignId: string) => {
+    setActiveCampaigns(current => current.map(campaign =>
+      campaign.id === campaignId
+        ? { ...campaign, status: campaign.status === "pausada" ? "rodando" : "pausada" }
+        : campaign
+    ));
+  };
+
+  const stopCampaign = (campaignId: string) => {
+    const campaign = activeCampaigns.find(item => item.id === campaignId);
+    if (!campaign) return;
+    setActiveCampaigns(current => current.filter(item => item.id !== campaignId));
+    setClosedCampaigns(current => [{ ...campaign, status: "finalizada" }, ...current]);
+    toast.success("Campanha parada e movida para anteriores");
+  };
+
+  const downloadCampaignReport = (campaign: CampaignSummary) => {
+    const rows = campaign.reportRows.length ? campaign.reportRows : buildFallbackReportRows(campaign);
+    downloadCsv(`relatorio-${campaign.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.csv`, [
+      ["campanha", "criada_em", "publico", "enviados", "respostas", "nome", "telefone", "origem", "status"],
+      ...rows.map(row => [
+        campaign.name,
+        new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(campaign.createdAt)),
+        campaign.audience,
+        campaign.sent,
+        campaign.responses,
+        row.name,
+        row.phone,
+        row.origin,
+        row.status,
+      ]),
+    ]);
+  };
+
+  const redoCampaign = (campaign: CampaignSummary) => {
+    setName(campaign.name);
+    setMessage(campaign.message);
+    setCsvNumbers(campaign.reportRows.filter(row => row.origin === "Lista CSV").map(row => row.phone).join("\n"));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    toast.success("Campanha carregada para refazer");
   };
 
   return (
@@ -147,7 +299,7 @@ export default function Campanhas() {
           </div>
           <div className="grid grid-cols-3 gap-2 text-center">
             <div className="rounded-xl bg-secondary px-4 py-3">
-              <div className="text-lg font-bold">{audience.length}</div>
+              <div className="text-lg font-bold">{totalAudience}</div>
               <div className="text-[10px] font-semibold uppercase text-muted-foreground">leads</div>
             </div>
             <div className="rounded-xl bg-secondary px-4 py-3">
@@ -155,8 +307,8 @@ export default function Campanhas() {
               <div className="text-[10px] font-semibold uppercase text-muted-foreground">tags</div>
             </div>
             <div className="rounded-xl bg-secondary px-4 py-3">
-              <div className="text-lg font-bold">{selectedSellerIds.length || sellerOptions.length}</div>
-              <div className="text-[10px] font-semibold uppercase text-muted-foreground">vendedores</div>
+              <div className="text-lg font-bold">{importedNumbers.length}</div>
+              <div className="text-[10px] font-semibold uppercase text-muted-foreground">csv</div>
             </div>
           </div>
         </div>
@@ -169,6 +321,19 @@ export default function Campanhas() {
             </div>
 
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+              <div>
+                <Label>Clientes para disparar</Label>
+                <Select value={clientFilter} onValueChange={setClientFilter}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos elegiveis</SelectItem>
+                    <SelectItem value="retornar-hoje">Precisam retorno hoje</SelectItem>
+                    <SelectItem value="sem-resposta">Sem resposta</SelectItem>
+                    <SelectItem value="proposta-pendente">Proposta pendente</SelectItem>
+                    <SelectItem value="nao-lidos">Nao lidos</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
               <div>
                 <Label>Periodo do ultimo contato</Label>
                 <Select value={lastContact} onValueChange={setLastContact}>
@@ -236,6 +401,18 @@ export default function Campanhas() {
                 </div>
               </div>
             </div>
+
+            <div>
+              <Label>Lista de numeros em CSV</Label>
+              <Textarea
+                value={csvNumbers}
+                onChange={event => setCsvNumbers(event.target.value)}
+                rows={4}
+                className="mt-1"
+                placeholder="+55 11 99999-0000, +55 11 98888-0000"
+              />
+              <p className="mt-1 text-xs text-muted-foreground">Separe os numeros por virgula, ponto e virgula ou linha. Estes contatos entram junto com os filtros do CRM.</p>
+            </div>
           </div>
 
           <div className="space-y-4">
@@ -264,8 +441,8 @@ export default function Campanhas() {
       </section>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <CampaignList title="Campanhas rodando atualmente" items={runningCampaigns} />
-        <CampaignList title="Campanhas anteriores" items={previousCampaigns} />
+        <CampaignList title="Campanhas rodando atualmente" items={activeCampaigns} mode="running" onTogglePause={toggleCampaignPause} onStop={stopCampaign} />
+        <CampaignList title="Campanhas anteriores" items={closedCampaigns} mode="previous" onDownload={downloadCampaignReport} onRedo={redoCampaign} />
       </div>
     </AppLayout>
   );

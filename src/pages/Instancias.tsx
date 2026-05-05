@@ -1,8 +1,5 @@
-import { useMemo, useState } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useCRM } from "@/store/crm-store";
 import { cn } from "@/lib/utils";
 import { Cable, MessageSquare, Power, QrCode, RefreshCcw, Smartphone, Wifi, WifiOff } from "lucide-react";
@@ -15,15 +12,14 @@ type WhatsAppInstance = {
   name: string;
   phone: string;
   status: InstanceStatus;
-  sellerId: string;
   lastSync: string;
   conversations: number;
 };
 
 const initialInstances: WhatsAppInstance[] = [
-  { id: "wa-01", name: "WhatsApp Principal", phone: "+55 11 98888-0101", status: "ativa", sellerId: "s1", lastSync: "2026-04-30T08:42:00", conversations: 38 },
-  { id: "wa-02", name: "WhatsApp Comercial 2", phone: "+55 11 97777-0202", status: "desconectada", sellerId: "s2", lastSync: "2026-04-29T17:15:00", conversations: 12 },
-  { id: "wa-03", name: "WhatsApp Pos-venda", phone: "+55 11 96666-0303", status: "desligada", sellerId: "", lastSync: "2026-04-27T11:20:00", conversations: 0 },
+  { id: "wa-01", name: "WhatsApp Principal", phone: "+55 11 98888-0101", status: "ativa", lastSync: "2026-04-30T08:42:00", conversations: 38 },
+  { id: "wa-02", name: "WhatsApp Comercial 2", phone: "+55 11 97777-0202", status: "desconectada", lastSync: "2026-04-29T17:15:00", conversations: 12 },
+  { id: "wa-03", name: "WhatsApp Pos-venda", phone: "+55 11 96666-0303", status: "desligada", lastSync: "2026-04-27T11:20:00", conversations: 0 },
 ];
 
 const statusConfig: Record<InstanceStatus, { label: string; className: string; icon: typeof Wifi }> = {
@@ -36,15 +32,9 @@ const formatDateTime = (value: string) =>
   new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
 
 export default function Instancias() {
-  const { isAdmin, teamUsers } = useCRM();
-  const [instances, setInstances] = useState(initialInstances);
-  const sellerOptions = useMemo(() => teamUsers.filter(user => user.active && user.role !== "Administrador"), [teamUsers]);
+  const { isAdmin } = useCRM();
+  const instances = initialInstances;
   const activeCount = instances.filter(instance => instance.status === "ativa").length;
-
-  const updateSeller = (instanceId: string, sellerId: string) => {
-    setInstances(current => current.map(instance => instance.id === instanceId ? { ...instance, sellerId } : instance));
-    toast.success("Vendedor vinculado a instancia");
-  };
 
   const placeholderAction = () => toast.info("Conexao da instancia sera implementada depois");
 
@@ -59,7 +49,7 @@ export default function Instancias() {
   }
 
   return (
-    <AppLayout title="Instancias" subtitle="Conecte canais de WhatsApp e vincule acesso por vendedor">
+    <AppLayout title="Instancias" subtitle="Conecte e acompanhe canais de WhatsApp">
       <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
         <div className="card-elevated p-5">
           <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-primary-soft text-primary">
@@ -87,7 +77,7 @@ export default function Instancias() {
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
           <h2 className="font-display text-base font-bold">Canais conectados</h2>
-          <p className="text-xs text-muted-foreground">Defina qual vendedor acessa cada instancia e suas conversas.</p>
+          <p className="text-xs text-muted-foreground">Acompanhe status, sincronizacao e volume de conversas de cada instancia.</p>
         </div>
         <Button className="gap-2 bg-gradient-primary" onClick={placeholderAction}>
           <Cable className="h-4 w-4" /> Nova instancia
@@ -98,7 +88,6 @@ export default function Instancias() {
         {instances.map(instance => {
           const config = statusConfig[instance.status];
           const StatusIcon = config.icon;
-          const seller = sellerOptions.find(item => item.id === instance.sellerId);
 
           return (
             <div key={instance.id} className="card-elevated p-5">
@@ -125,22 +114,6 @@ export default function Instancias() {
                 <div>
                   <div className="text-[10px] font-semibold uppercase text-muted-foreground">Conversas</div>
                   <div className="mt-1 text-sm font-medium">{instance.conversations}</div>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-xs">Vendedor com acesso</Label>
-                <Select value={instance.sellerId || "none"} onValueChange={value => updateSeller(instance.id, value === "none" ? "" : value)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Nenhum vendedor</SelectItem>
-                    {sellerOptions.map(option => (
-                      <SelectItem key={option.id} value={option.id}>{option.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <div className="min-h-4 text-xs text-muted-foreground">
-                  {seller ? `${seller.name} podera acessar conversas desta instancia.` : "Sem vendedor vinculado no momento."}
                 </div>
               </div>
 

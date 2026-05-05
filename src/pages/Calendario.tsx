@@ -15,7 +15,7 @@ import {
   subWeeks,
 } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { CalendarClock, ChevronLeft, ChevronRight, Clock, Edit3, Plus, Trash2, UserRound } from "lucide-react";
+import { CalendarClock, ChevronDown, ChevronLeft, ChevronRight, Clock, Edit3, Plus, Trash2, UserRound } from "lucide-react";
 import { toast } from "sonner";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
@@ -29,6 +29,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Appointment, AppointmentType, useCRM } from "@/store/crm-store";
@@ -81,14 +83,33 @@ export default function Calendario() {
   const [editing, setEditing] = useState<Appointment | null>(null);
   const selectableDeals = useMemo(() => deals.filter(canViewDeal), [canViewDeal, deals]);
   const sellerOptions = useMemo(() => teamUsers.filter(user => user.active && user.role !== "Administrador"), [teamUsers]);
+  const filterSellerOptions = useMemo(() => isAdmin ? sellerOptions : sellerOptions.filter(user => user.id === currentUser?.id), [currentUser?.id, isAdmin, sellerOptions]);
   const defaultSellerId = isAdmin ? sellerOptions[0]?.id || "" : currentUser?.id || "";
   const [form, setForm] = useState(() => emptyForm(selectableDeals[0]?.id || "", defaultSellerId));
   const [draggingAppointmentId, setDraggingAppointmentId] = useState<string | null>(null);
+  const [filterSellerIds, setFilterSellerIds] = useState<string[]>(() => isAdmin ? [] : currentUser?.id ? [currentUser.id] : []);
+
+  const filteredAppointments = useMemo(() => appointments.filter(appointment => {
+    if (!isAdmin && appointment.sellerId !== currentUser?.id) return false;
+    return filterSellerIds.length === 0 || filterSellerIds.includes(appointment.sellerId);
+  }), [appointments, currentUser?.id, filterSellerIds, isAdmin]);
 
   const sortedAppointments = useMemo(
-    () => [...appointments].sort((a, b) => `${a.date}T${a.startTime}`.localeCompare(`${b.date}T${b.startTime}`)),
-    [appointments],
+    () => [...filteredAppointments].sort((a, b) => `${a.date}T${a.startTime}`.localeCompare(`${b.date}T${b.startTime}`)),
+    [filteredAppointments],
   );
+
+  const sellerFilterLabel = filterSellerIds.length === 0
+    ? "Todas vendedoras"
+    : filterSellerIds.length === 1
+      ? sellerOptions.find(seller => seller.id === filterSellerIds[0])?.name || "1 vendedora"
+      : `${filterSellerIds.length} vendedoras`;
+
+  const toggleSellerFilter = (sellerId: string) => {
+    setFilterSellerIds(current => current.includes(sellerId)
+      ? current.filter(id => id !== sellerId)
+      : [...current, sellerId]);
+  };
 
   const visibleTitle = useMemo(() => {
     if (view === "day") return format(cursor, "dd 'de' MMMM, yyyy", { locale: ptBR });
@@ -297,6 +318,33 @@ export default function Calendario() {
             <div className="ml-2 min-w-0 font-display text-lg font-bold capitalize">{visibleTitle}</div>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" className="justify-between gap-2">
+                  <span className="max-w-44 truncate">{sellerFilterLabel}</span>
+                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-[300px] p-2">
+                {isAdmin && (
+                  <>
+                    <label className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm hover:bg-secondary">
+                      <Checkbox checked={filterSellerIds.length === 0} onCheckedChange={() => setFilterSellerIds([])} />
+                      <span>Todas vendedoras</span>
+                    </label>
+                    <div className="my-1 h-px bg-border" />
+                  </>
+                )}
+                <div className="max-h-56 overflow-y-auto">
+                  {filterSellerOptions.map(seller => (
+                    <label key={seller.id} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm hover:bg-secondary">
+                      <Checkbox checked={filterSellerIds.includes(seller.id)} onCheckedChange={() => toggleSellerFilter(seller.id)} />
+                      <span className="truncate">{seller.name}</span>
+                    </label>
+                  ))}
+                </div>
+              </PopoverContent>
+            </Popover>
             <div className="grid grid-cols-3 rounded-lg border border-border bg-secondary/60 p-1 text-sm">
               {(["day", "week", "month"] as CalendarView[]).map(item => (
                 <button

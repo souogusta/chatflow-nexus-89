@@ -26,6 +26,7 @@ export interface Deal {
   interest?: string;
   lastInteraction: string;
   sellerId: string;
+  assignedSellerIds?: string[];
   temperature: Temperature;
   tags: string[];
   unread: boolean;

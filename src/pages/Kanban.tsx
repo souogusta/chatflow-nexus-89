@@ -1,4 +1,5 @@
-import { useMemo, useRef, useState, WheelEvent } from "react";
+import { useEffect, useMemo, useRef, useState, WheelEvent } from "react";
+import { useSearchParams } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { DndContext, DragEndEvent, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { useCRM } from "@/store/crm-store";
@@ -20,6 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 
 export default function Kanban() {
   const { deals, moveDeal, stages, removeStage, appointments, canViewDeal, isAdmin, teamUsers, tags } = useCRM();
+  const [searchParams] = useSearchParams();
   const boardRef = useRef<HTMLDivElement>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const [selected, setSelected] = useState<Deal | null>(null);
@@ -33,6 +35,7 @@ export default function Kanban() {
   const [filterStart, setFilterStart] = useState("");
   const [filterEnd, setFilterEnd] = useState("");
   const selectedDeal = selected ? deals.find(deal => deal.id === selected.id) || selected : null;
+  const openDealId = searchParams.get("deal");
   const sellerOptions = useMemo(() => teamUsers.filter(user => user.active && user.role !== "Administrador"), [teamUsers]);
   const activeFilters = [filterSellerIds.length > 0, filterTags.length > 0, filterWaiting !== "all", Boolean(filterStart), Boolean(filterEnd)]
     .filter(Boolean).length;
@@ -65,8 +68,9 @@ export default function Kanban() {
 
     return deals.filter(deal => {
       const interaction = new Date(deal.lastInteraction).getTime();
+      const responsibleIds = [deal.sellerId, ...(deal.assignedSellerIds || [])];
       return canViewDeal(deal)
-        && (!isAdmin || filterSellerIds.length === 0 || filterSellerIds.includes(deal.sellerId))
+        && (!isAdmin || filterSellerIds.length === 0 || filterSellerIds.some(id => responsibleIds.includes(id)))
         && (!isAdmin || filterTags.length === 0 || filterTags.some(tag => deal.tags.includes(tag)))
         && (!isAdmin || filterWaiting === "all" || (filterWaiting === "cliente-aguardando" ? deal.unread : !deal.unread))
         && (!isAdmin || !start || interaction >= start)
@@ -92,6 +96,14 @@ export default function Kanban() {
       });
     return map;
   }, [appointments]);
+
+  useEffect(() => {
+    if (!openDealId) return;
+    const deal = deals.find(item => item.id === openDealId && canViewDeal(item));
+    if (!deal) return;
+    setSelected(deal);
+    setSheetOpen(true);
+  }, [canViewDeal, deals, openDealId]);
 
   const handleRemoveStage = (id: string, title: string, count: number) => {
     if (!isAdmin) {

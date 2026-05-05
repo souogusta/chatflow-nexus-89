@@ -16,14 +16,14 @@ import { toast } from "sonner";
 const ROLES = ["Administrador", "Gerente", "Vendedora", "Suporte"];
 const PERMISSIONS = [
   "Ver dashboard", "Ver todos os atendimentos", "Ver apenas próprios atendimentos",
-  "Editar funil", "Finalizar venda", "Criar agentes", "Editar agentes",
+  "Editar funil", "Editar atendimentos", "Finalizar venda", "Criar agentes", "Editar agentes",
   "Ver relatórios", "Exportar dados", "Criar usuários", "Alterar configurações da empresa"
 ];
 const DEFAULT_PERMS: Record<string, boolean[]> = {
   "Administrador": PERMISSIONS.map(() => true),
-  "Gerente": PERMISSIONS.map((_, i) => i !== 9 && i !== 10),
-  "Vendedora": [true, false, true, true, true, false, false, false, false, false, false],
-  "Suporte": [true, true, false, false, false, false, false, true, false, false, false],
+  "Gerente": PERMISSIONS.map((_, i) => i !== 10 && i !== 11),
+  "Vendedora": [true, false, true, false, false, true, false, false, false, false, false, false],
+  "Suporte": [true, true, false, false, false, false, false, false, true, false, false, false],
 };
 
 const INTEGRATIONS = [
@@ -58,6 +58,10 @@ const emptyUser: TeamUser = {
   role: "Vendedora",
   password: "",
   active: true,
+  allowedTags: [],
+  allowedConversationIds: [],
+  allowedInstanceIds: [],
+  receivesNewLeads: true,
 };
 
 export default function Configuracoes() {

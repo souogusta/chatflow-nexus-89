@@ -4,13 +4,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useCRM } from "@/store/crm-store";
 import { Agent, MODEL_OPTIONS } from "@/lib/mock-data";
-import { Bot, Plus, Copy, Trash2, Pencil, Sparkles, Send, MessageSquare } from "lucide-react";
+import { Bot, Plus, Copy, Trash2, Pencil, Sparkles, Send, MessageSquare, CheckCircle2, PauseCircle, TestTube2, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
@@ -18,8 +17,17 @@ import { ptBR } from "date-fns/locale";
 
 const emptyAgent: Omit<Agent, "id" | "conversations" | "updatedAt"> = {
   name: "", description: "", prompt: "", model: "balanced", temperature: 0.7, active: true,
-  channel: "WhatsApp Principal", triggerTags: [], blockWords: [], handoffMessage: "Vou te transferir para um especialista.",
+  channel: "WhatsApp Principal", triggerTags: [], blockWords: [], handoffMessage: "Vou te transferir para um especialista.", fallbackMessage: "Não consegui entender totalmente. Pode reformular?",
 };
+
+const AGENT_TEMPLATES = [
+  { name: "Agente de pré-venda", objective: "Qualificar interesse e encaminhar leads prontos para um atendente.", description: "Responde dúvidas iniciais, coleta informações do cliente e direciona leads qualificados para um atendente.", tone: "Consultivo e objetivo" },
+  { name: "Agente de suporte", objective: "Resolver dúvidas frequentes e abrir passagem para humano quando necessário.", description: "Ajuda clientes com perguntas recorrentes, status de atendimento e orientações simples.", tone: "Calmo e didático" },
+  { name: "Agente de cobrança", objective: "Negociar pendências com linguagem respeitosa.", description: "Lembra vencimentos, confirma dados e direciona acordos para o financeiro.", tone: "Profissional e cordial" },
+  { name: "Agente de recuperação de leads", objective: "Reativar contatos parados sem parecer insistente.", description: "Retoma conversas antigas, entende objeções e tenta recuperar oportunidades.", tone: "Amigável e direto" },
+  { name: "Agente de pós-venda", objective: "Acompanhar satisfação e oportunidades futuras.", description: "Confirma entrega, coleta feedback e identifica novas necessidades.", tone: "Cuidadoso e próximo" },
+  { name: "Agente de qualificação", objective: "Coletar perfil, necessidade, orçamento e urgência.", description: "Faz perguntas estruturadas para classificar o lead como quente, morno ou frio.", tone: "Claro e organizado" },
+];
 
 export default function Agentes() {
   const { agents, setAgents } = useCRM();
@@ -29,6 +37,18 @@ export default function Agentes() {
   const [testOutput, setTestOutput] = useState("");
 
   const openNew = () => { setEditing({ ...emptyAgent, id: "new", conversations: 0, updatedAt: new Date().toISOString() } as Agent); setOpen(true); };
+  const openTemplate = (template: typeof AGENT_TEMPLATES[number]) => {
+    setEditing({
+      ...emptyAgent,
+      id: "new",
+      name: template.name,
+      description: template.description,
+      prompt: `Objetivo: ${template.objective}\nTom de voz: ${template.tone}\nQuando transferir para humano: quando houver pedido de desconto, reclamação, compra pronta ou dúvida fora do escopo.\nMensagem de fallback: ${emptyAgent.fallbackMessage}`,
+      conversations: 0,
+      updatedAt: new Date().toISOString(),
+    } as Agent);
+    setOpen(true);
+  };
   const openEdit = (a: Agent) => { setEditing(a); setOpen(true); };
 
   const save = () => {
@@ -49,8 +69,6 @@ export default function Agentes() {
     toast.success("Agente duplicado");
   };
   const remove = (id: string) => { setAgents(prev => prev.filter(a => a.id !== id)); toast.success("Agente removido"); };
-  const toggle = (id: string) => setAgents(prev => prev.map(a => a.id === id ? { ...a, active: !a.active } : a));
-
   const runTest = () => {
     if (!testInput.trim()) return;
     setTestOutput("Pensando...");
@@ -67,6 +85,22 @@ export default function Agentes() {
         <Button onClick={openNew} className="bg-gradient-primary gap-2"><Plus className="w-4 h-4" /> Criar novo agente</Button>
       </div>
 
+      <section className="card-elevated mb-6 p-5">
+        <div className="mb-4">
+          <h2 className="font-display text-base font-bold">Modelos prontos de agentes</h2>
+          <p className="text-xs text-muted-foreground">Escolha um ponto de partida e ajuste instruções antes de ativar.</p>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {AGENT_TEMPLATES.map(template => (
+            <button key={template.name} type="button" onClick={() => openTemplate(template)} className="rounded-xl border border-border/70 bg-background p-4 text-left transition hover:border-primary/30 hover:bg-secondary/50">
+              <div className="mb-2 flex items-center gap-2 text-sm font-semibold"><Bot className="h-4 w-4 text-primary" /> {template.name}</div>
+              <p className="line-clamp-2 text-xs text-muted-foreground">{template.description}</p>
+              <div className="mt-3 text-[11px] font-semibold text-primary">{template.tone}</div>
+            </button>
+          ))}
+        </div>
+      </section>
+
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {agents.map(a => {
           const model = MODEL_OPTIONS.find(o => o.id === a.model);
@@ -76,16 +110,18 @@ export default function Agentes() {
                 <div className="w-11 h-11 rounded-xl bg-gradient-primary flex items-center justify-center shadow-glow">
                   <Bot className="w-5 h-5 text-primary-foreground" />
                 </div>
-                <Switch checked={a.active} onCheckedChange={() => toggle(a.id)} />
               </div>
               <h3 className="font-display font-bold text-base mb-1">{a.name}</h3>
               <p className="text-xs text-muted-foreground line-clamp-2 mb-3">{a.description}</p>
 
               <div className="flex flex-wrap gap-1.5 mb-4">
-                <span className={cn("text-[10px] px-2 py-0.5 rounded-full font-semibold",
+                <span className={cn("inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-semibold",
                   a.active ? "bg-success-soft text-success" : "bg-muted text-muted-foreground")}>
-                  {a.active ? "● Ativo" : "○ Inativo"}
+                  {a.active ? <CheckCircle2 className="h-3 w-3" /> : <PauseCircle className="h-3 w-3" />}
+                  {a.active ? "Ativo" : "Inativo"}
                 </span>
+                <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-warning-soft text-warning font-semibold"><TestTube2 className="h-3 w-3" /> Em teste</span>
+                {!a.prompt && <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-destructive-soft text-destructive font-semibold"><AlertTriangle className="h-3 w-3" /> Requer revisão</span>}
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary-soft text-primary font-semibold">{model?.label}</span>
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-secondary text-muted-foreground font-semibold">{a.conversations} conversas</span>
               </div>
@@ -122,7 +158,7 @@ export default function Agentes() {
                   <div><Label>Nome do agente *</Label><Input value={editing.name} onChange={e => setEditing({ ...editing, name: e.target.value })} /></div>
                   <div><Label>Canal vinculado</Label><Input value={editing.channel} onChange={e => setEditing({ ...editing, channel: e.target.value })} /></div>
                 </div>
-                <div><Label>Descrição interna</Label><Textarea value={editing.description} onChange={e => setEditing({ ...editing, description: e.target.value })} rows={2} /></div>
+                <div><Label>Objetivo e descrição interna</Label><Textarea value={editing.description} onChange={e => setEditing({ ...editing, description: e.target.value })} rows={3} /></div>
 
                 <div>
                   <Label className="mb-2 block">Modelo de IA</Label>
@@ -144,22 +180,28 @@ export default function Agentes() {
                   <Slider value={[editing.temperature]} min={0} max={1} step={0.1} onValueChange={(v) => setEditing({ ...editing, temperature: v[0] })} className="mt-2" />
                 </div>
 
-                <div className="flex items-center justify-between p-3 bg-secondary rounded-xl">
-                  <div><div className="font-semibold text-sm">Agente ativo</div><div className="text-xs text-muted-foreground">Responde automaticamente</div></div>
-                  <Switch checked={editing.active} onCheckedChange={(v) => setEditing({ ...editing, active: v })} />
+                <div className="rounded-xl bg-secondary p-3">
+                  <div className="font-semibold text-sm">Status operacional</div>
+                  <div className="text-xs text-muted-foreground">A ativação será controlada pela conversa, regras e configuração de fora de serviço.</div>
                 </div>
               </TabsContent>
 
               <TabsContent value="prompt" className="space-y-4 mt-4">
-                <div><Label>Prompt / configuração do agente</Label>
+                <div><Label>Prompt / instruções do agente</Label>
                   <Textarea value={editing.prompt} onChange={e => setEditing({ ...editing, prompt: e.target.value })} rows={10} className="font-mono text-xs" /></div>
+                <div><Label>Quando deve transferir para humano</Label>
+                  <Input value={editing.blockWords.join(", ")} onChange={e => setEditing({ ...editing, blockWords: e.target.value.split(",").map(s => s.trim()).filter(Boolean) })} placeholder="reclamação, desconto, cancelar, falar com atendente" /></div>
                 <div><Label>Mensagem de transferência para humano</Label>
                   <Input value={editing.handoffMessage} onChange={e => setEditing({ ...editing, handoffMessage: e.target.value })} /></div>
+                <div><Label>Mensagem de fallback</Label>
+                  <Input value={(editing as Agent & { fallbackMessage?: string }).fallbackMessage || ""} onChange={e => setEditing({ ...editing, fallbackMessage: e.target.value } as Agent & { fallbackMessage?: string })} /></div>
               </TabsContent>
 
               <TabsContent value="rules" className="space-y-4 mt-4">
                 <div><Label>Tags que ativam o agente (separadas por vírgula)</Label>
                   <Input value={editing.triggerTags.join(", ")} onChange={e => setEditing({ ...editing, triggerTags: e.target.value.split(",").map(s => s.trim()).filter(Boolean) })} /></div>
+                <div><Label>Tom de voz</Label>
+                  <Input defaultValue="Consultivo, claro e humano" /></div>
                 <div><Label>Palavras que bloqueiam o agente</Label>
                   <Input value={editing.blockWords.join(", ")} onChange={e => setEditing({ ...editing, blockWords: e.target.value.split(",").map(s => s.trim()).filter(Boolean) })} /></div>
                 <div><Label>Limite de mensagens automáticas por conversa</Label><Input type="number" defaultValue={10} /></div>
@@ -170,13 +212,13 @@ export default function Agentes() {
 
               <TabsContent value="test" className="space-y-3 mt-4">
                 <div className="text-xs text-muted-foreground bg-info-soft text-info p-3 rounded-xl">
-                  Modelo em uso: <strong>{MODEL_OPTIONS.find(m => m.id === editing.model)?.model}</strong>
+                  Teste em chat simulado antes de ativar. Modelo em uso: <strong>{MODEL_OPTIONS.find(m => m.id === editing.model)?.model}</strong>
                 </div>
                 <div><Label>Mensagem do cliente</Label>
                   <Textarea value={testInput} onChange={e => setTestInput(e.target.value)} rows={3} placeholder="Digite uma mensagem para testar..." /></div>
                 <Button onClick={runTest} className="bg-gradient-primary gap-2"><Send className="w-4 h-4" /> Testar agente</Button>
                 {testOutput && (
-                  <div className="p-4 bg-secondary rounded-xl">
+                  <div className="rounded-xl border border-border bg-secondary p-4">
                     <div className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1"><Bot className="w-3 h-3" /> Resposta gerada</div>
                     <div className="text-sm whitespace-pre-wrap">{testOutput}</div>
                   </div>

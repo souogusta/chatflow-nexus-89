@@ -1,6 +1,18 @@
+import { ReactNode } from "react";
 import { cn } from "@/lib/utils";
-import { Flame, Snowflake, Thermometer, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock3, Flame, PauseCircle, Snowflake, Thermometer, X } from "lucide-react";
 import { Temperature } from "@/lib/mock-data";
+
+export type ConversationStatus = "nova" | "sem-resposta" | "em-atendimento" | "aguardando-cliente" | "finalizada" | "lead-parado";
+
+const statusConfig: Record<ConversationStatus, { label: string; cls: string; icon: typeof Clock3 }> = {
+  "nova": { label: "Nova", icon: Clock3, cls: "bg-info-soft text-info" },
+  "sem-resposta": { label: "Sem resposta", icon: AlertTriangle, cls: "bg-destructive-soft text-destructive" },
+  "em-atendimento": { label: "Em atendimento", icon: Clock3, cls: "bg-primary-soft text-primary" },
+  "aguardando-cliente": { label: "Aguardando cliente", icon: PauseCircle, cls: "bg-warning-soft text-warning" },
+  "finalizada": { label: "Finalizada", icon: CheckCircle2, cls: "bg-success-soft text-success" },
+  "lead-parado": { label: "Lead parado", icon: AlertTriangle, cls: "bg-warning-soft text-warning" },
+};
 
 export function ClientTemperatureBadge({ temp, size = "sm" }: { temp: Temperature; size?: "sm" | "md" }) {
   const cfg = {
@@ -24,6 +36,30 @@ export function TagBadge({ label, onRemove }: { label: string; onRemove?: () => 
       {onRemove && (
         <button onClick={onRemove} className="hover:text-primary/70"><X className="w-2.5 h-2.5" /></button>
       )}
+    </span>
+  );
+}
+
+export function StatusBadge({ status }: { status: ConversationStatus }) {
+  const cfg = statusConfig[status];
+  const Icon = cfg.icon;
+  return (
+    <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold", cfg.cls)}>
+      <Icon className="h-3 w-3" /> {cfg.label}
+    </span>
+  );
+}
+
+export function PriorityAlert({ children, tone = "warning" }: { children: ReactNode; tone?: "warning" | "danger" | "success" }) {
+  const toneClass = {
+    warning: "bg-warning-soft text-warning",
+    danger: "bg-destructive-soft text-destructive",
+    success: "bg-success-soft text-success",
+  }[tone];
+
+  return (
+    <span className={cn("inline-flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-semibold", toneClass)}>
+      <AlertTriangle className="h-3 w-3" /> {children}
     </span>
   );
 }

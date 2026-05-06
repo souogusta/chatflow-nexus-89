@@ -2,16 +2,18 @@ import { useMemo, useState } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useCRM } from "@/store/crm-store";
 import { cn } from "@/lib/utils";
-import { BadgeCheck, Download, MessageSquareText, Pause, Play, RotateCcw, Send, Square } from "lucide-react";
+import { BadgeCheck, Download, MessageSquareText, Pause, Play, RotateCcw, Search, Send, Square, X } from "lucide-react";
 import { toast } from "sonner";
 
-type CampaignStatus = "rodando" | "pausada" | "finalizada";
+type CampaignStatus = "rascunho" | "aguardando-revisao" | "agendada" | "rodando" | "pausada" | "finalizada" | "erro";
 
 type CampaignSummary = {
   id: string;
@@ -33,7 +35,7 @@ type CampaignReportRow = {
 };
 
 const runningCampaigns: CampaignSummary[] = [
-  { id: "c1", name: "Retorno leads quentes", audience: 64, sent: 42, responses: 13, status: "rodando", createdAt: "2026-04-30T09:10:00", message: "Retorno para leads quentes", reportRows: [] },
+  { id: "c1", name: "Retorno leads quentes", audience: 64, sent: 42, responses: 13, status: "aguardando-revisao", createdAt: "2026-04-30T09:10:00", message: "Retorno para leads quentes", reportRows: [] },
   { id: "c2", name: "Orcamento sem resposta", audience: 38, sent: 38, responses: 7, status: "pausada", createdAt: "2026-04-29T15:20:00", message: "Follow-up de orcamento", reportRows: [] },
 ];
 
@@ -56,9 +58,6 @@ const daysSince = (value: string) => {
 
 const responseRate = (campaign: CampaignSummary) =>
   campaign.sent ? Math.round((campaign.responses / campaign.sent) * 100) : 0;
-
-const parseCsvNumbers = (value: string) =>
-  Array.from(new Set(value.split(/[\n,;]+/).map(item => item.trim()).filter(Boolean)));
 
 const csvEscape = (value: string | number) => `"${String(value).replaceAll('"', '""')}"`;
 
@@ -123,11 +122,15 @@ function CampaignList({
                 </div>
                 <span className={cn(
                   "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                  campaign.status === "rascunho" && "bg-muted text-muted-foreground",
+                  campaign.status === "aguardando-revisao" && "bg-warning-soft text-warning",
+                  campaign.status === "agendada" && "bg-info-soft text-info",
                   campaign.status === "rodando" && "bg-success-soft text-success",
                   campaign.status === "pausada" && "bg-warning-soft text-warning",
                   campaign.status === "finalizada" && "bg-muted text-muted-foreground",
+                  campaign.status === "erro" && "bg-destructive-soft text-destructive",
                 )}>
-                  {campaign.status}
+                  {campaign.status.replaceAll("-", " ")}
                 </span>
               </div>
               <div className="mb-2 flex items-center justify-between text-xs">
@@ -142,7 +145,7 @@ function CampaignList({
                   <>
                     <Button variant="outline" size="sm" className="gap-2" onClick={() => onTogglePause?.(campaign.id)}>
                       {campaign.status === "pausada" ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
-                      {campaign.status === "pausada" ? "Continuar" : "Pausar"}
+                      {campaign.status === "pausada" ? "Reativar" : "Pausar"}
                     </Button>
                     <Button variant="outline" size="sm" className="gap-2" onClick={() => onStop?.(campaign.id)}>
                       <Square className="h-4 w-4" /> Parar
@@ -151,7 +154,7 @@ function CampaignList({
                 ) : (
                   <>
                     <Button variant="outline" size="sm" className="gap-2" onClick={() => onDownload?.(campaign)}>
-                      <Download className="h-4 w-4" /> Relatorio CSV
+                      <Download className="h-4 w-4" /> Ver relatório
                     </Button>
                     <Button variant="outline" size="sm" className="gap-2" onClick={() => onRedo?.(campaign)}>
                       <RotateCcw className="h-4 w-4" /> Refazer
@@ -178,14 +181,19 @@ export default function Campanhas() {
   const [temperature, setTemperature] = useState("all");
   const [lastContact, setLastContact] = useState("all");
   const [returnStatus, setReturnStatus] = useState("all");
-  const [csvNumbers, setCsvNumbers] = useState("");
   const [message, setMessage] = useState("Oi {{nome_cliente}}, tudo bem? Vi que nosso ultimo contato ficou em aberto e queria saber se ainda posso te ajudar pelo WhatsApp {{numero_cliente}}.");
+  const [tab, setTab] = useState("remarketing");
+  const [selectedDealIds, setSelectedDealIds] = useState<string[]>([]);
+  const [customerPickerOpen, setCustomerPickerOpen] = useState(false);
+  const [customerPickerSearch, setCustomerPickerSearch] = useState("");
 
   const sellerOptions = useMemo(() => teamUsers.filter(user => user.active && user.role !== "Administrador"), [teamUsers]);
+  const manualSelectionActive = selectedDealIds.length > 0;
   const audience = useMemo(() => deals.filter(deal => {
     const days = daysSince(deal.lastInteraction);
-    return canViewDeal(deal)
-      && (selectedSellerIds.length === 0 || selectedSellerIds.includes(deal.sellerId))
+    if (!canViewDeal(deal)) return false;
+    if (manualSelectionActive) return selectedDealIds.includes(deal.id);
+    return (selectedSellerIds.length === 0 || selectedSellerIds.includes(deal.sellerId))
       && (selectedTags.length === 0 || selectedTags.some(tag => deal.tags.includes(tag)))
       && (clientFilter === "all"
         || (clientFilter === "retornar-hoje" && deal.tags.includes("Retornar hoje"))
@@ -198,10 +206,13 @@ export default function Campanhas() {
         || (lastContact === "7d" && days >= 7)
         || (lastContact === "15d" && days >= 15)
         || (lastContact === "30d" && days >= 30));
-  }), [canViewDeal, clientFilter, deals, lastContact, returnStatus, selectedSellerIds, selectedTags, temperature]);
-  const importedNumbers = useMemo(() => parseCsvNumbers(csvNumbers), [csvNumbers]);
-  const totalAudience = audience.length + importedNumbers.length;
+  }), [canViewDeal, clientFilter, deals, lastContact, manualSelectionActive, returnStatus, selectedDealIds, selectedSellerIds, selectedTags, temperature]);
+  const totalAudience = audience.length;
   const previewDeal = audience[0];
+  const customerPickerDeals = useMemo(() => {
+    const term = customerPickerSearch.toLowerCase().trim();
+    return deals.filter(deal => canViewDeal(deal) && (!term || [deal.customer, deal.phone, deal.tags.join(" ")].join(" ").toLowerCase().includes(term)));
+  }, [canViewDeal, customerPickerSearch, deals]);
 
   const toggleSeller = (sellerId: string) => {
     setSelectedSellerIds(current => current.includes(sellerId) ? current.filter(id => id !== sellerId) : [...current, sellerId]);
@@ -211,6 +222,10 @@ export default function Campanhas() {
     setSelectedTags(current => current.includes(tag) ? current.filter(item => item !== tag) : [...current, tag]);
   };
 
+  const toggleManualDeal = (dealId: string) => {
+    setSelectedDealIds(current => current.includes(dealId) ? current.filter(id => id !== dealId) : [...current, dealId]);
+  };
+
   const insertToken = (token: string) => {
     setMessage(current => `${current}${current.endsWith(" ") || !current ? "" : " "}${token}`);
   };
@@ -218,18 +233,12 @@ export default function Campanhas() {
   const createCampaign = () => {
     if (!name.trim()) return toast.error("Informe o nome da campanha");
     if (!message.trim()) return toast.error("Informe a mensagem da campanha");
-    if (totalAudience === 0) return toast.error("Nenhum lead encontrado para estes filtros ou lista CSV");
+    if (totalAudience === 0) return toast.error("Nenhum lead encontrado para a seleção atual");
     const reportRows: CampaignReportRow[] = [
       ...audience.map(deal => ({
         name: deal.customer,
         phone: deal.phone,
-        origin: "Filtro CRM",
-        status: "pendente",
-      })),
-      ...importedNumbers.map((phone, index) => ({
-        name: `CSV ${index + 1}`,
-        phone,
-        origin: "Lista CSV",
+        origin: manualSelectionActive ? "Seleção manual" : "Filtro CRM",
         status: "pendente",
       })),
     ];
@@ -239,12 +248,12 @@ export default function Campanhas() {
       audience: totalAudience,
       sent: 0,
       responses: 0,
-      status: "rodando",
+      status: "aguardando-revisao",
       createdAt: new Date().toISOString(),
       message: message.trim(),
       reportRows,
     }, ...current]);
-    toast.success("Campanha de remarketing preparada");
+    toast.success("Campanha criada e aguardando revisão");
   };
 
   const toggleCampaignPause = (campaignId: string) => {
@@ -284,18 +293,26 @@ export default function Campanhas() {
   const redoCampaign = (campaign: CampaignSummary) => {
     setName(campaign.name);
     setMessage(campaign.message);
-    setCsvNumbers(campaign.reportRows.filter(row => row.origin === "Lista CSV").map(row => row.phone).join("\n"));
     window.scrollTo({ top: 0, behavior: "smooth" });
     toast.success("Campanha carregada para refazer");
   };
 
   return (
-    <AppLayout title="Campanha" subtitle="Crie listas de remarketing e acompanhe respostas">
+    <AppLayout title="Campanhas" subtitle="Crie listas de remarketing e acompanhe respostas">
+      <Tabs value={tab} onValueChange={setTab} className="mb-6">
+        <TabsList className="h-auto flex-wrap bg-card">
+          <TabsTrigger value="remarketing">Remarketing</TabsTrigger>
+          <TabsTrigger value="manual">Disparo manual</TabsTrigger>
+          <TabsTrigger value="templates">Templates</TabsTrigger>
+          <TabsTrigger value="historico">Histórico</TabsTrigger>
+          <TabsTrigger value="resultados">Resultados</TabsTrigger>
+        </TabsList>
+      </Tabs>
       <section className="card-elevated mb-6 p-6">
         <div className="mb-6 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <h2 className="font-display text-lg font-bold">Nova campanha de remarketing</h2>
-            <p className="text-sm text-muted-foreground">Monte uma lista filtrada e personalize a mensagem antes do disparo.</p>
+            <p className="text-sm text-muted-foreground">Monte público, revise mensagem, acompanhe taxa de resposta e conversões.</p>
           </div>
           <div className="grid grid-cols-3 gap-2 text-center">
             <div className="rounded-xl bg-secondary px-4 py-3">
@@ -307,8 +324,8 @@ export default function Campanhas() {
               <div className="text-[10px] font-semibold uppercase text-muted-foreground">tags</div>
             </div>
             <div className="rounded-xl bg-secondary px-4 py-3">
-              <div className="text-lg font-bold">{importedNumbers.length}</div>
-              <div className="text-[10px] font-semibold uppercase text-muted-foreground">csv</div>
+              <div className="text-lg font-bold">{activeCampaigns.filter(item => item.status === "aguardando-revisao").length}</div>
+              <div className="text-[10px] font-semibold uppercase text-muted-foreground">revisão</div>
             </div>
           </div>
         </div>
@@ -322,21 +339,22 @@ export default function Campanhas() {
 
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
               <div>
-                <Label>Clientes para disparar</Label>
-                <Select value={clientFilter} onValueChange={setClientFilter}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos elegiveis</SelectItem>
-                    <SelectItem value="retornar-hoje">Precisam retorno hoje</SelectItem>
-                    <SelectItem value="sem-resposta">Sem resposta</SelectItem>
-                    <SelectItem value="proposta-pendente">Proposta pendente</SelectItem>
-                    <SelectItem value="nao-lidos">Nao lidos</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Label>Clientes selecionados</Label>
+                <div className="flex gap-2">
+                  <Button type="button" variant="outline" className="flex-1 justify-between" onClick={() => setCustomerPickerOpen(true)}>
+                    {manualSelectionActive ? `${selectedDealIds.length} selecionados` : "Selecionar cliente por cliente"}
+                    <Search className="h-4 w-4 text-muted-foreground" />
+                  </Button>
+                  {manualSelectionActive && (
+                    <Button type="button" variant="outline" size="icon" onClick={() => setSelectedDealIds([])} title="Remover seleção manual">
+                      <X className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
               </div>
               <div>
                 <Label>Periodo do ultimo contato</Label>
-                <Select value={lastContact} onValueChange={setLastContact}>
+                <Select value={lastContact} onValueChange={setLastContact} disabled={manualSelectionActive}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Qualquer periodo</SelectItem>
@@ -348,7 +366,7 @@ export default function Campanhas() {
               </div>
               <div>
                 <Label>Temperatura</Label>
-                <Select value={temperature} onValueChange={setTemperature}>
+                <Select value={temperature} onValueChange={setTemperature} disabled={manualSelectionActive}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todas</SelectItem>
@@ -360,7 +378,7 @@ export default function Campanhas() {
               </div>
               <div>
                 <Label>Retorno</Label>
-                <Select value={returnStatus} onValueChange={setReturnStatus}>
+                <Select value={returnStatus} onValueChange={setReturnStatus} disabled={manualSelectionActive}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todos</SelectItem>
@@ -375,12 +393,12 @@ export default function Campanhas() {
               <div>
                 <div className="mb-2 flex items-center justify-between">
                   <Label>Vendedores</Label>
-                  <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setSelectedSellerIds([])}>Todos</Button>
+                  <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" disabled={manualSelectionActive} onClick={() => setSelectedSellerIds([])}>Todos</Button>
                 </div>
                 <div className="max-h-44 overflow-y-auto rounded-xl border border-border/70 bg-background p-2">
                   {sellerOptions.map(seller => (
                     <label key={seller.id} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-sm hover:bg-secondary">
-                      <Checkbox checked={selectedSellerIds.includes(seller.id)} onCheckedChange={() => toggleSeller(seller.id)} />
+                      <Checkbox disabled={manualSelectionActive} checked={selectedSellerIds.includes(seller.id)} onCheckedChange={() => toggleSeller(seller.id)} />
                       <span className="truncate">{seller.name}</span>
                     </label>
                   ))}
@@ -389,29 +407,17 @@ export default function Campanhas() {
               <div>
                 <div className="mb-2 flex items-center justify-between">
                   <Label>Tags</Label>
-                  <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setSelectedTags([])}>Todas</Button>
+                  <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" disabled={manualSelectionActive} onClick={() => setSelectedTags([])}>Todas</Button>
                 </div>
                 <div className="max-h-44 overflow-y-auto rounded-xl border border-border/70 bg-background p-2">
                   {tags.map(tag => (
                     <label key={tag} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-sm hover:bg-secondary">
-                      <Checkbox checked={selectedTags.includes(tag)} onCheckedChange={() => toggleTag(tag)} />
+                      <Checkbox disabled={manualSelectionActive} checked={selectedTags.includes(tag)} onCheckedChange={() => toggleTag(tag)} />
                       <span className="truncate">{tag}</span>
                     </label>
                   ))}
                 </div>
               </div>
-            </div>
-
-            <div>
-              <Label>Lista de numeros em CSV</Label>
-              <Textarea
-                value={csvNumbers}
-                onChange={event => setCsvNumbers(event.target.value)}
-                rows={4}
-                className="mt-1"
-                placeholder="+55 11 99999-0000, +55 11 98888-0000"
-              />
-              <p className="mt-1 text-xs text-muted-foreground">Separe os numeros por virgula, ponto e virgula ou linha. Estes contatos entram junto com os filtros do CRM.</p>
             </div>
           </div>
 
@@ -444,6 +450,39 @@ export default function Campanhas() {
         <CampaignList title="Campanhas rodando atualmente" items={activeCampaigns} mode="running" onTogglePause={toggleCampaignPause} onStop={stopCampaign} />
         <CampaignList title="Campanhas anteriores" items={closedCampaigns} mode="previous" onDownload={downloadCampaignReport} onRedo={redoCampaign} />
       </div>
+
+      <Dialog open={customerPickerOpen} onOpenChange={setCustomerPickerOpen}>
+        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Selecionar clientes</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input value={customerPickerSearch} onChange={event => setCustomerPickerSearch(event.target.value)} placeholder="Buscar por nome, telefone ou tag" className="pl-9" />
+            </div>
+            <div className="flex items-center justify-between rounded-xl bg-secondary p-3 text-sm">
+              <span>{selectedDealIds.length} clientes selecionados</span>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => setSelectedDealIds(customerPickerDeals.map(deal => deal.id))}>Selecionar visíveis</Button>
+                <Button variant="outline" size="sm" onClick={() => setSelectedDealIds([])}>Limpar</Button>
+              </div>
+            </div>
+            <div className="max-h-[420px] overflow-y-auto rounded-xl border border-border/70 p-2">
+              {customerPickerDeals.map(deal => (
+                <label key={deal.id} className="flex cursor-pointer items-start gap-3 rounded-lg px-2 py-2 text-sm hover:bg-secondary">
+                  <Checkbox checked={selectedDealIds.includes(deal.id)} onCheckedChange={() => toggleManualDeal(deal.id)} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-semibold">{deal.customer}</span>
+                    <span className="block truncate text-xs text-muted-foreground">{deal.phone} · {deal.tags.join(", ")}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+            <Button className="w-full bg-gradient-primary" onClick={() => setCustomerPickerOpen(false)}>Aplicar seleção</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </AppLayout>
   );
 }

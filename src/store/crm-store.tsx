@@ -17,7 +17,7 @@ interface FinishedDeal {
   operatorId: string;
 }
 
-export type AppointmentType = "ligacao" | "reuniao" | "follow-up" | "demonstracao" | "retorno-comercial" | "outro";
+export type AppointmentType = "retorno" | "reuniao" | "follow-up" | "ligacao" | "demonstracao" | "pos-venda" | "retorno-comercial" | "outro";
 
 export interface Appointment {
   id: string;
@@ -29,6 +29,8 @@ export interface Appointment {
   sellerId: string;
   description: string;
   type: AppointmentType;
+  status?: "agendado" | "concluido" | "cancelado";
+  origin?: string;
 }
 
 export type TeamUser = {

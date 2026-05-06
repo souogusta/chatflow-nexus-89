@@ -51,6 +51,11 @@ export function KanbanColumn({ id, title, count, color, totalValue, canManageSta
         className={cn("min-h-[200px] flex-1 space-y-2 overflow-y-auto overscroll-contain rounded-2xl p-2 pr-1 transition-colors scrollbar-thin",
           isOver ? "bg-primary-soft border-2 border-dashed border-primary" : "bg-secondary/40 border-2 border-dashed border-transparent")}>
         {children}
+        {count === 0 && (
+          <div className="flex h-28 items-center justify-center rounded-xl border border-dashed border-border bg-card/70 px-4 text-center text-xs text-muted-foreground">
+            Nenhum lead nesta etapa.
+          </div>
+        )}
       </div>
     </div>
   );

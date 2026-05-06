@@ -10,10 +10,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { TeamUser, useCRM } from "@/store/crm-store";
 import { hashPassword } from "@/lib/password";
-import { Plus, Trash2, Pencil, Check, X, MessageSquare, Bot, Webhook, FileSpreadsheet, Cable } from "lucide-react";
+import { Plus, Trash2, Pencil, Check, X } from "lucide-react";
 import { toast } from "sonner";
 
-const ROLES = ["Administrador", "Gerente", "Vendedora", "Suporte"];
+const ROLES = ["Administrador", "Vendedora", "Financeiro", "Somente leitura"];
 const PERMISSIONS = [
   "Ver dashboard", "Ver todos os atendimentos", "Ver apenas próprios atendimentos",
   "Editar funil", "Editar atendimentos", "Finalizar venda", "Criar agentes", "Editar agentes",
@@ -21,18 +21,10 @@ const PERMISSIONS = [
 ];
 const DEFAULT_PERMS: Record<string, boolean[]> = {
   "Administrador": PERMISSIONS.map(() => true),
-  "Gerente": PERMISSIONS.map((_, i) => i !== 10 && i !== 11),
   "Vendedora": [true, false, true, false, false, true, false, false, false, false, false, false],
-  "Suporte": [true, true, false, false, false, false, false, false, true, false, false, false],
+  "Financeiro": [true, false, false, false, false, false, false, false, true, true, false, false],
+  "Somente leitura": [true, true, false, false, false, false, false, false, true, false, false, false],
 };
-
-const INTEGRATIONS = [
-  { name: "WhatsApp", desc: "Conecte sua conta Business", icon: MessageSquare, connected: true },
-  { name: "OpenAI", desc: "Chave de API para os agentes", icon: Bot, connected: true },
-  { name: "Webhooks", desc: "Receba eventos em tempo real", icon: Webhook, connected: false },
-  { name: "Planilhas", desc: "Sincronize com Google Sheets", icon: FileSpreadsheet, connected: false },
-  { name: "API externa", desc: "Integre com seu ERP/CRM", icon: Cable, connected: false },
-];
 
 const initialsFromName = (name: string) =>
   name.split(" ").filter(Boolean).map(part => part[0]).join("").slice(0, 2).toUpperCase();
@@ -65,10 +57,11 @@ const emptyUser: TeamUser = {
 };
 
 export default function Configuracoes() {
-  const { teamUsers: users, setTeamUsers: setUsers, accountProfile, setAccountProfile, currentUser, hasPermission } = useCRM();
+  const { teamUsers: users, setTeamUsers: setUsers, accountProfile, setAccountProfile, currentUser, hasPermission, agents } = useCRM();
   const [perms, setPerms] = useState(DEFAULT_PERMS);
   const [userDialogOpen, setUserDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<TeamUser>(emptyUser);
+  const sellerOptions = users.filter(user => user.active && user.role !== "Administrador");
   const accountPhotoInputRef = useRef<HTMLInputElement>(null);
   const userPhotoInputRef = useRef<HTMLInputElement>(null);
 
@@ -176,7 +169,11 @@ export default function Configuracoes() {
           <TabsTrigger value="users">Usuários</TabsTrigger>
           <TabsTrigger value="permissions">Permissões</TabsTrigger>
           <TabsTrigger value="company">Empresa</TabsTrigger>
-          <TabsTrigger value="integrations">Integrações</TabsTrigger>
+          <TabsTrigger value="service">Atendimento</TabsTrigger>
+          <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>
+          <TabsTrigger value="notifications">Notificações</TabsTrigger>
+          <TabsTrigger value="appearance">Aparência</TabsTrigger>
+          <TabsTrigger value="openai">OpenAI</TabsTrigger>
         </TabsList>
 
         <TabsContent value="account" className="card-elevated p-6 mt-4 max-w-2xl">
@@ -273,17 +270,89 @@ export default function Configuracoes() {
           <Button onClick={() => toast.success("Empresa atualizada!")} className="mt-6 bg-gradient-primary">Salvar</Button>
         </TabsContent>
 
-        <TabsContent value="integrations" className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-          {INTEGRATIONS.map(i => (
-            <div key={i.name} className="card-elevated p-5 flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-primary-soft text-primary flex items-center justify-center"><i.icon className="w-5 h-5" /></div>
-              <div className="flex-1">
-                <div className="font-semibold">{i.name}</div>
-                <div className="text-xs text-muted-foreground">{i.desc}</div>
+        <TabsContent value="service" className="card-elevated p-6 mt-4 max-w-2xl space-y-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div><Label>Tempo máximo sem resposta</Label><Input defaultValue="15 minutos" /></div>
+            <div><Label>Tags padrão</Label><Input defaultValue="Urgente, Retornar hoje, Enviar proposta" /></div>
+            <div className="sm:col-span-2"><Label>Mensagem padrão de ausência</Label><Input defaultValue="Recebemos sua mensagem e retornaremos no próximo horário de atendimento." /></div>
+            <div className="sm:col-span-2"><Label>Mensagem de boas-vindas</Label><Input defaultValue="Olá! Como podemos ajudar hoje?" /></div>
+            <div className="sm:col-span-2"><Label>Motivos de perda personalizáveis</Label><Input defaultValue="Preço, Sem interesse, Sem resposta, Fora do perfil, Outros" /></div>
+          </div>
+          <div className="rounded-xl border border-border/70 bg-background p-4">
+            <div className="mb-3">
+              <div className="text-sm font-semibold">Atendimento fora de serviço</div>
+              <p className="text-xs text-muted-foreground">Use uma IA para receber novos leads fora do horário e direcionar para uma vendedora quando a operação abrir.</p>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div><Label>Início fora de serviço</Label><Input type="time" defaultValue="18:00" /></div>
+              <div><Label>Fim fora de serviço</Label><Input type="time" defaultValue="08:00" /></div>
+              <div>
+                <Label>IA para atender novos leads</Label>
+                <Select defaultValue={agents[0]?.id || "none"}>
+                  <SelectTrigger><SelectValue placeholder="Selecione uma IA" /></SelectTrigger>
+                  <SelectContent>
+                    {agents.map(agent => <SelectItem key={agent.id} value={agent.id}>{agent.name}</SelectItem>)}
+                    <SelectItem value="none">Nenhuma IA</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-              <Button variant={i.connected ? "outline" : "default"} className={!i.connected ? "bg-gradient-primary" : ""}>{i.connected ? "Conectado" : "Conectar"}</Button>
+              <div>
+                <Label>Direcionar para vendedora</Label>
+                <Select defaultValue={sellerOptions[0]?.id || "none"}>
+                  <SelectTrigger><SelectValue placeholder="Selecione uma vendedora" /></SelectTrigger>
+                  <SelectContent>
+                    {sellerOptions.map(user => <SelectItem key={user.id} value={user.id}>{user.name}</SelectItem>)}
+                    <SelectItem value="none">Sem direcionamento</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+          <Button onClick={() => toast.success("Configurações de atendimento salvas")} className="bg-gradient-primary">Salvar</Button>
+        </TabsContent>
+
+        <TabsContent value="whatsapp" className="card-elevated p-6 mt-4 max-w-2xl">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="rounded-xl bg-secondary p-4"><div className="text-xs text-muted-foreground">Status da integração</div><div className="mt-1 font-semibold text-success">Em configuração</div></div>
+            <div className="rounded-xl bg-secondary p-4"><div className="text-xs text-muted-foreground">Número conectado</div><div className="mt-1 font-semibold">+55 11 98888-0101</div></div>
+            <div className="rounded-xl bg-secondary p-4"><div className="text-xs text-muted-foreground">Instância</div><div className="mt-1 font-semibold">WhatsApp Principal</div></div>
+            <div className="rounded-xl bg-secondary p-4"><div className="text-xs text-muted-foreground">Última sincronização</div><div className="mt-1 font-semibold">Hoje, 10:30</div></div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="notifications" className="card-elevated p-6 mt-4 max-w-2xl space-y-4">
+          {[
+            "Notificar conversa sem resposta",
+            "Notificar lead quente parado",
+            "Notificar retorno do dia",
+            "Notificar campanha finalizada",
+          ].map(item => (
+            <div key={item} className="flex items-center justify-between rounded-xl bg-secondary p-3">
+              <div className="text-sm font-semibold">{item}</div>
+              <Switch defaultChecked />
             </div>
           ))}
+        </TabsContent>
+
+        <TabsContent value="appearance" className="card-elevated p-6 mt-4 max-w-2xl space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div><Label>Tema</Label><Select defaultValue="light"><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="light">Claro</SelectItem><SelectItem value="dark">Escuro</SelectItem></SelectContent></Select></div>
+            <div><Label>Cor principal</Label><Input type="color" defaultValue="#6d5dfc" className="h-10 p-1" /></div>
+            <div className="sm:col-span-2"><Label>Nome exibido no sistema</Label><Input defaultValue="CRM WhatsApp Pro" /></div>
+          </div>
+          <Button onClick={() => toast.success("Aparência atualizada")} className="bg-gradient-primary">Salvar aparência</Button>
+        </TabsContent>
+
+        <TabsContent value="openai" className="card-elevated p-6 mt-4 max-w-2xl space-y-4">
+          <div>
+            <h3 className="font-display font-bold">OpenAI</h3>
+            <p className="text-sm text-muted-foreground">Informe a API key usada pelos agentes de IA. A integração real com backend será conectada depois.</p>
+          </div>
+          <div>
+            <Label>OpenAI API Key</Label>
+            <Input type="password" placeholder="sk-..." />
+          </div>
+          <Button onClick={() => toast.success("Chave da OpenAI salva")} className="bg-gradient-primary">Salvar API key</Button>
         </TabsContent>
       </Tabs>
 

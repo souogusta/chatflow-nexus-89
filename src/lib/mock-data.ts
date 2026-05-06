@@ -33,6 +33,8 @@ export interface Deal {
   estimatedValue?: number;
   stage: DealStage;
   notes?: string;
+  aiEnabled?: boolean;
+  aiAgentId?: string;
 }
 
 export interface Agent {
@@ -49,6 +51,9 @@ export interface Agent {
   triggerTags: string[];
   blockWords: string[];
   handoffMessage: string;
+  objective?: string;
+  tone?: string;
+  fallbackMessage?: string;
 }
 
 export const STAGES = stagesData as Stage[];

@@ -1,4 +1,5 @@
-import { DragEvent, FormEvent, useMemo, useState } from "react";
+import { DragEvent, FormEvent, MouseEvent, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   addDays,
   addMonths,
@@ -42,10 +43,12 @@ const HOURS = Array.from({ length: 12 }, (_, index) => index + 8);
 const HOUR_HEIGHT = 64;
 
 const APPOINTMENT_TYPES: { value: AppointmentType; label: string; className: string }[] = [
+  { value: "retorno", label: "Retorno", className: "bg-destructive-soft text-destructive border-destructive/20" },
   { value: "ligacao", label: "Ligação", className: "bg-info-soft text-info border-info/20" },
   { value: "reuniao", label: "Reunião", className: "bg-primary-soft text-primary border-primary/20" },
   { value: "follow-up", label: "Follow-up", className: "bg-warning-soft text-warning border-warning/20" },
   { value: "demonstracao", label: "Demonstração", className: "bg-success-soft text-success border-success/20" },
+  { value: "pos-venda", label: "Pós-venda", className: "bg-success-soft text-success border-success/20" },
   { value: "retorno-comercial", label: "Retorno comercial", className: "bg-destructive-soft text-destructive border-destructive/20" },
   { value: "outro", label: "Outro", className: "bg-secondary text-foreground border-border" },
 ];
@@ -64,23 +67,27 @@ const timeFromMinutes = (totalMinutes: number) =>
 const formatDateTime = (appointment: Appointment) => `${format(fromDateKey(appointment.date), "dd/MM/yyyy")} às ${appointment.startTime}`;
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
 
-const emptyForm = (dealId: string, sellerId: string, date = toDateKey(new Date()), startTime = "09:00") => ({
+const emptyForm = (dealId: string, sellerId: string, date = toDateKey(new Date()), startTime = "09:00", durationMinutes = 30) => ({
   title: "",
   dealId,
   date,
   startTime,
-  endTime: "09:30",
+  endTime: timeFromMinutes(minutesFromTime(startTime) + durationMinutes),
   sellerId,
   description: "",
-  type: "follow-up" as AppointmentType,
+  type: "retorno" as AppointmentType,
+  status: "agendado" as Appointment["status"],
+  origin: "Conversa",
 });
 
 export default function Calendario() {
   const { appointments, addAppointment, updateAppointment, removeAppointment, deals, teamUsers, currentUser, isAdmin, canViewDeal } = useCRM();
+  const [searchParams] = useSearchParams();
   const [view, setView] = useState<CalendarView>("week");
   const [cursor, setCursor] = useState(new Date(2026, 3, 30));
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Appointment | null>(null);
+  const prefillKeyRef = useRef("");
   const selectableDeals = useMemo(() => deals.filter(canViewDeal), [canViewDeal, deals]);
   const sellerOptions = useMemo(() => teamUsers.filter(user => user.active && user.role !== "Administrador"), [teamUsers]);
   const filterSellerOptions = useMemo(() => isAdmin ? sellerOptions : sellerOptions.filter(user => user.id === currentUser?.id), [currentUser?.id, isAdmin, sellerOptions]);
@@ -88,11 +95,15 @@ export default function Calendario() {
   const [form, setForm] = useState(() => emptyForm(selectableDeals[0]?.id || "", defaultSellerId));
   const [draggingAppointmentId, setDraggingAppointmentId] = useState<string | null>(null);
   const [filterSellerIds, setFilterSellerIds] = useState<string[]>(() => isAdmin ? [] : currentUser?.id ? [currentUser.id] : []);
+  const filterType = "all";
+  const filterStatus = "all";
 
   const filteredAppointments = useMemo(() => appointments.filter(appointment => {
     if (!isAdmin && appointment.sellerId !== currentUser?.id) return false;
-    return filterSellerIds.length === 0 || filterSellerIds.includes(appointment.sellerId);
-  }), [appointments, currentUser?.id, filterSellerIds, isAdmin]);
+    return (filterSellerIds.length === 0 || filterSellerIds.includes(appointment.sellerId))
+      && (filterType === "all" || appointment.type === filterType)
+      && (filterStatus === "all" || (appointment.status || "agendado") === filterStatus);
+  }), [appointments, currentUser?.id, filterSellerIds, filterStatus, filterType, isAdmin]);
 
   const sortedAppointments = useMemo(
     () => [...filteredAppointments].sort((a, b) => `${a.date}T${a.startTime}`.localeCompare(`${b.date}T${b.startTime}`)),
@@ -119,12 +130,47 @@ export default function Calendario() {
     return `${format(start, "dd MMM", { locale: ptBR })} - ${format(end, "dd MMM, yyyy", { locale: ptBR })}`;
   }, [cursor, view]);
 
-  const openCreate = (date = toDateKey(cursor), startTime = "09:00") => {
-    const start = minutesFromTime(startTime);
-    const end = `${String(Math.floor((start + 30) / 60)).padStart(2, "0")}:${String((start + 30) % 60).padStart(2, "0")}`;
+  const openCreate = (date = toDateKey(cursor), startTime = "09:00", durationMinutes = 30) => {
     setEditing(null);
-    setForm({ ...emptyForm(selectableDeals[0]?.id || "", defaultSellerId, date, startTime), endTime: end });
+    setForm({ ...emptyForm(selectableDeals[0]?.id || "", defaultSellerId, date, startTime, durationMinutes) });
     setModalOpen(true);
+  };
+
+  useEffect(() => {
+    const dealId = searchParams.get("deal");
+    const prefillKey = searchParams.toString();
+    if (prefillKeyRef.current === prefillKey) return;
+    const deal = dealId ? selectableDeals.find(item => item.id === dealId) : null;
+    const leadName = searchParams.get("lead");
+    const phone = searchParams.get("phone");
+    if (!deal && !leadName) return;
+    prefillKeyRef.current = prefillKey;
+
+    const date = toDateKey(new Date());
+    const sellerId = deal?.sellerId || defaultSellerId;
+    setEditing(null);
+    setForm({
+      ...emptyForm(deal?.id || selectableDeals[0]?.id || "", sellerId, date, "10:00"),
+      title: `Retorno - ${deal?.customer || leadName}`,
+      description: phone ? `Origem: conversa WhatsApp. Telefone: ${phone}` : "Origem: conversa WhatsApp.",
+      type: "retorno",
+      origin: "Conversa",
+    });
+    setModalOpen(true);
+  }, [defaultSellerId, searchParams, selectableDeals]);
+
+  const suggestFreeSlots = (date: string, startTime: string, sellerId: string) => {
+    const start = minutesFromTime(startTime);
+    const options = [start + 30, start + 60, start + 90]
+      .map(timeFromMinutes)
+      .filter(time => !appointments.some(appointment =>
+        appointment.date === date &&
+        appointment.sellerId === sellerId &&
+        minutesFromTime(time) < minutesFromTime(appointment.endTime) &&
+        minutesFromTime(time) + 30 > minutesFromTime(appointment.startTime)
+      ))
+      .slice(0, 2);
+    return options;
   };
 
   const openEdit = (appointment: Appointment) => {
@@ -142,6 +188,7 @@ export default function Calendario() {
       sellerId: appointment.sellerId,
       description: appointment.description,
       type: appointment.type,
+      status: appointment.status || "agendado",
     });
     setModalOpen(true);
   };
@@ -158,12 +205,14 @@ export default function Calendario() {
     }
     const hasConflict = appointments.some(appointment => {
       if (editing?.id === appointment.id || appointment.date !== form.date) return false;
+      if (appointment.sellerId !== form.sellerId) return false;
       return minutesFromTime(form.startTime) < minutesFromTime(appointment.endTime)
         && minutesFromTime(form.endTime) > minutesFromTime(appointment.startTime);
     });
 
     if (hasConflict) {
-      toast.error("Já existe agendamento neste horário. Escolha outro intervalo para evitar conflito entre vendedoras.");
+      const suggestions = suggestFreeSlots(form.date, form.startTime, form.sellerId);
+      toast.error(`${form.startTime} está ocupado.${suggestions.length ? ` Tente ${suggestions.join(" ou ")}.` : " Escolha outro intervalo."}`);
       return;
     }
 
@@ -242,6 +291,19 @@ export default function Calendario() {
     moveAppointment(appointmentId, date, startTime);
   };
 
+  const handleTimedSlotClick = (event: MouseEvent<HTMLDivElement>, date: string) => {
+    if ((event.target as HTMLElement).closest("[data-appointment-event='true']")) return;
+
+    const rect = event.currentTarget.getBoundingClientRect();
+    const minutesFromStart = (clamp(event.clientY - rect.top, 0, rect.height) / HOUR_HEIGHT) * 60;
+    const dayStart = HOURS[0] * 60;
+    const dayEnd = dayStart + HOURS.length * 60;
+    const snappedMinutes = Math.floor(minutesFromStart / 15) * 15;
+    const startTime = timeFromMinutes(clamp(dayStart + snappedMinutes, dayStart, dayEnd - 60));
+
+    openCreate(date, startTime, 60);
+  };
+
   const goPrevious = () => {
     if (view === "day") setCursor(prev => addDays(prev, -1));
     if (view === "week") setCursor(prev => subWeeks(prev, 1));
@@ -276,6 +338,7 @@ export default function Calendario() {
               event.stopPropagation();
               openEdit(appointment);
             }}
+            data-appointment-event="true"
             className={cn(
               "pointer-events-auto absolute z-10 w-[calc(100%-8px)] cursor-grab rounded-md border px-2 py-1 text-left text-[11px] shadow-sm transition hover:shadow-md active:cursor-grabbing",
               draggingAppointmentId === appointment.id && "opacity-60",
@@ -304,7 +367,7 @@ export default function Calendario() {
   }, [cursor]);
 
   return (
-    <AppLayout title="Calendário" subtitle="Agendamentos comerciais integrados ao CRM">
+      <AppLayout title="Calendário" subtitle="Agendamentos comerciais integrados ao CRM">
       <div className="space-y-4">
         <div className="flex flex-col gap-3 rounded-xl border border-border/70 bg-card p-3 shadow-sm lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-2">
@@ -453,16 +516,15 @@ export default function Calendario() {
                   <div
                     key={day.toISOString()}
                     className="relative border-r border-border/70"
+                    onClick={event => handleTimedSlotClick(event, toDateKey(day))}
                     onDragOver={event => event.preventDefault()}
                     onDrop={event => handleTimedAppointmentDrop(event, toDateKey(day))}
                     style={{ height: HOURS.length * HOUR_HEIGHT }}
                   >
                     {HOURS.map(hour => (
-                    <button
+                    <div
                       key={hour}
-                      type="button"
-                      onClick={() => openCreate(toDateKey(day), `${String(hour).padStart(2, "0")}:00`)}
-                      className="block h-16 w-full border-b border-border/70 bg-card text-left hover:bg-secondary/40"
+                      className="h-16 w-full border-b border-border/70 bg-card hover:bg-secondary/40"
                     />
                   ))}
                     {renderTimedEvents(day)}
@@ -477,6 +539,7 @@ export default function Calendario() {
           {sortedAppointments.slice(0, 6).map(appointment => {
             const deal = deals.find(item => item.id === appointment.dealId);
             const seller = teamUsers.find(item => item.id === appointment.sellerId);
+            const typeLabel = APPOINTMENT_TYPES.find(type => type.value === appointment.type)?.label || "Outro";
             return (
               <button
                 key={appointment.id}
@@ -499,6 +562,8 @@ export default function Calendario() {
                   <span className="truncate">{deal?.customer}</span>
                   <span className="h-1 w-1 rounded-full bg-muted-foreground/50" />
                   <span className="truncate">{seller?.name}</span>
+                  <span className="h-1 w-1 rounded-full bg-muted-foreground/50" />
+                  <span className="truncate">{typeLabel} · {appointment.status || "agendado"}</span>
                 </div>
               </button>
             );
@@ -542,15 +607,6 @@ export default function Calendario() {
               <div>
                 <Label htmlFor="appointment-date">Data</Label>
                 <Input id="appointment-date" type="date" value={form.date} onChange={event => setForm(prev => ({ ...prev, date: event.target.value }))} />
-              </div>
-              <div>
-                <Label>Tipo de compromisso</Label>
-                <Select value={form.type} onValueChange={(type: AppointmentType) => setForm(prev => ({ ...prev, type }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {APPOINTMENT_TYPES.map(type => <SelectItem key={type.value} value={type.value}>{type.label}</SelectItem>)}
-                  </SelectContent>
-                </Select>
               </div>
               <div>
                 <Label htmlFor="appointment-start">Horário inicial</Label>

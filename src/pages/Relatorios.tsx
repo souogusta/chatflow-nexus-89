@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { useCRM } from "@/store/crm-store";
 import { SELLERS, REFUSAL_REASONS, MONTHLY_SERIES, REFUSAL_PIE } from "@/lib/mock-data";
 import { ClientTemperatureBadge, TagBadge } from "@/components/shared/Badges";
-import { Download, FileSpreadsheet, Play, FileText, Users, Bot, Flame, AlertTriangle, History, ShoppingBag, X } from "lucide-react";
+import { Download, FileSpreadsheet, Play, FileText, Users, Bot, Flame, AlertTriangle, History, ShoppingBag, X, Share2 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 
@@ -183,6 +183,14 @@ export default function Relatorios() {
     handoff: `${12 + index * 4}%`,
     active: agent.active,
   }));
+  const mostCommonReason = REFUSAL_PIE.sort((a, b) => b.value - a.value)[0]?.name || "preço";
+  const insights = [
+    `${sellerPerformance.sort((a, b) => Number(b.conversao) - Number(a.conversao))[0]?.name || "Ana"} teve a melhor conversão do período.`,
+    `O motivo de perda mais comum foi ${mostCommonReason.toLowerCase()}.`,
+    "Leads quentes parados há mais de 24h aparecem com menor taxa de conversão.",
+    "O período da tarde concentrou maior volume de atendimentos.",
+    "Campanhas de reativação tiveram maior taxa de resposta que disparos frios.",
+  ];
 
   const exportFile = (type: "xlsx" | "csv") => {
     if (!hasPermission("Exportar dados")) {
@@ -372,6 +380,20 @@ export default function Relatorios() {
         <div className="card-elevated p-4"><div className="text-xs text-muted-foreground">Ticket médio</div><div className="text-2xl font-bold">R$ {Math.round(avgTicket).toLocaleString("pt-BR")}</div></div>
       </div>
 
+      <section className="card-elevated mb-6 p-5">
+        <div className="mb-3 flex items-center gap-2">
+          <AlertTriangle className="h-4 w-4 text-primary" />
+          <h2 className="font-display text-base font-bold">Insights automáticos</h2>
+        </div>
+        <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-5">
+          {insights.map(insight => (
+            <div key={insight} className="rounded-xl border border-border/70 bg-background p-3 text-sm text-muted-foreground">
+              {insight}
+            </div>
+          ))}
+        </div>
+      </section>
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
         {REPORTS.map(r => (
           <button key={r.id} onClick={() => setSelected(r.id)}
@@ -391,8 +413,9 @@ export default function Relatorios() {
           </div>
           <div className="flex gap-2">
             <Button variant="outline" className="gap-2" onClick={() => toast.success(`${reportRows.length} registros carregados`)}><Play className="w-4 h-4" /> Gerar</Button>
-            <Button variant="outline" className="gap-2" onClick={() => exportFile("csv")}><Download className="w-4 h-4" /> CSV</Button>
-            <Button className="gap-2 bg-success hover:bg-success/90" onClick={() => exportFile("xlsx")}><FileSpreadsheet className="w-4 h-4" /> Excel</Button>
+            <Button variant="outline" className="gap-2" onClick={() => exportFile("csv")}><Download className="w-4 h-4" /> Exportar CSV</Button>
+            <Button variant="outline" className="gap-2" onClick={() => toast.success("Relatório pronto para compartilhar")}><Share2 className="w-4 h-4" /> Compartilhar relatório</Button>
+            <Button className="gap-2 bg-success hover:bg-success/90" onClick={() => exportFile("xlsx")}><FileSpreadsheet className="w-4 h-4" /> Exportar PDF</Button>
           </div>
         </div>
 

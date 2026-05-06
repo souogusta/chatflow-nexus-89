@@ -3,10 +3,10 @@ import { ArrowDown, ArrowUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export function MetricCard({
-  icon, label, value, delta, deltaValue, deltaPositive = true, accent = "primary",
+  icon, label, value, delta, deltaValue, deltaPositive = true, accent = "primary", onClick,
 }: {
   icon: ReactNode; label: string; value: string; delta?: string;
-  deltaValue?: string;
+  deltaValue?: string; onClick?: () => void;
   deltaPositive?: boolean; accent?: "primary" | "success" | "warning" | "info" | "destructive";
 }) {
   const accentMap = {
@@ -16,8 +16,8 @@ export function MetricCard({
     info: "bg-info-soft text-info",
     destructive: "bg-destructive-soft text-destructive",
   };
-  return (
-    <div className="card-elevated p-5 transition-all hover:shadow-soft hover:-translate-y-0.5">
+  const content = (
+    <>
       <div className="flex items-start justify-between mb-4">
         <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", accentMap[accent])}>
           {icon}
@@ -41,6 +41,20 @@ export function MetricCard({
       </div>
       <div className="text-xs font-medium text-muted-foreground mb-1">{label}</div>
       <div className="font-display text-2xl font-bold tracking-tight">{value}</div>
-    </div>
+    </>
   );
+
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className="card-elevated w-full cursor-pointer p-5 text-left transition-all hover:-translate-y-0.5 hover:shadow-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        {content}
+      </button>
+    );
+  }
+
+  return <div className="card-elevated w-full p-5 text-left transition-all hover:-translate-y-0.5 hover:shadow-soft">{content}</div>;
 }

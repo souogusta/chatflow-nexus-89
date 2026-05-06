@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useCRM } from "@/store/crm-store";
-import { AlertTriangle, Bot, CreditCard, Download, FileSpreadsheet, LockKeyhole, MessageSquare, Send, Upload } from "lucide-react";
+import { AlertTriangle, Bot, CheckCircle2, CreditCard, Download, FileSpreadsheet, LockKeyhole, MessageSquare, Send, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 const COST_PER_MESSAGE = 0.2;
@@ -14,7 +14,6 @@ const sampleRows = [
   { nome: "Carlos Lima", numero: "+55 11 98888-2020", campo1: "Avaliacao", campo2: "tarde" },
   { nome: "Juliana Rocha", numero: "+55 11 97777-3030", campo1: "Clareamento", campo2: "sexta" },
 ];
-
 const formatBRL = (value: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
 
@@ -40,6 +39,8 @@ export default function DisparoEmMassa() {
   const [message, setMessage] = useState("Oi {{Nome}}, tudo bem? Temos uma oportunidade especial para voce sobre {{Campo1}}. Toque no botao abaixo para falar com nossa equipe.");
   const [buttonName, setButtonName] = useState("Falar com a clinica");
   const [targetNumber, setTargetNumber] = useState("+55 11 98888-0101");
+  const [creditBalance, setCreditBalance] = useState(120);
+  const [creditTopUp, setCreditTopUp] = useState("100");
   const [lastReport, setLastReport] = useState<{
     createdAt: string;
     fileName: string;
@@ -69,6 +70,7 @@ export default function DisparoEmMassa() {
     if (!message.trim()) return toast.error("Informe a mensagem do disparo");
     if (!buttonName.trim()) return toast.error("Informe o nome do botao");
     if (!targetNumber.trim()) return toast.error("Informe o numero da instancia de destino");
+    if (totalCost > creditBalance) return toast.error("Saldo insuficiente. Adicione créditos antes de preparar o disparo.");
     setLastReport({
       createdAt: new Date().toISOString(),
       fileName,
@@ -77,7 +79,15 @@ export default function DisparoEmMassa() {
       estimatedCost: totalCost,
       buttonName: buttonName.trim(),
     });
+    setCreditBalance(current => Math.max(0, current - totalCost));
     toast.success("Disparo preparado para revisao");
+  };
+
+  const addCredits = () => {
+    const amount = Number(creditTopUp);
+    if (!amount || amount <= 0) return toast.error("Informe um valor válido para adicionar créditos");
+    setCreditBalance(current => current + amount);
+    toast.success("Créditos adicionados");
   };
 
   const downloadReport = () => {
@@ -120,6 +130,26 @@ export default function DisparoEmMassa() {
         </div>
       </div>
 
+      <section className="card-elevated mb-6 p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h2 className="font-display text-base font-bold">Saldo de créditos</h2>
+            <p className="text-sm text-muted-foreground">O disparo só pode ser preparado quando houver saldo suficiente na plataforma.</p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+            <div className="rounded-xl bg-secondary px-4 py-3">
+              <div className="text-xs font-semibold uppercase text-muted-foreground">Saldo disponível</div>
+              <div className="text-xl font-bold">{formatBRL(creditBalance)}</div>
+            </div>
+            <div>
+              <Label>Adicionar créditos</Label>
+              <Input type="number" value={creditTopUp} onChange={event => setCreditTopUp(event.target.value)} />
+            </div>
+            <Button className="bg-gradient-primary" onClick={addCredits}>Adicionar saldo</Button>
+          </div>
+        </div>
+      </section>
+
       <section className="card-elevated mb-6 p-6">
         <div className="mb-6 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
@@ -152,6 +182,19 @@ export default function DisparoEmMassa() {
                 <span className="mt-1 text-xs text-muted-foreground">Colunas obrigatorias: Nome e Numero. Campos opcionais: Campo1 a Campo6.</span>
                 <input type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={handleFile} />
               </label>
+            </div>
+
+            <div className="rounded-xl border border-border/70 bg-background p-4">
+              <div className="mb-3 flex items-center gap-2 text-sm font-semibold">
+                <CheckCircle2 className="h-4 w-4 text-success" /> Resumo dos contatos
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-5">
+                <div className="rounded-lg bg-success-soft p-3 text-success"><div className="font-bold">{estimatedRows ? 238 : 0}</div><div>válidos</div></div>
+                <div className="rounded-lg bg-destructive-soft p-3 text-destructive"><div className="font-bold">{estimatedRows ? 12 : 0}</div><div>inválidos</div></div>
+                <div className="rounded-lg bg-warning-soft p-3 text-warning"><div className="font-bold">{estimatedRows ? 6 : 0}</div><div>duplicados</div></div>
+                <div className="rounded-lg bg-warning-soft p-3 text-warning"><div className="font-bold">{estimatedRows ? 4 : 0}</div><div>sem DDD</div></div>
+                <div className="rounded-lg bg-muted p-3 text-muted-foreground"><div className="font-bold">{estimatedRows ? 2 : 0}</div><div>incompletos</div></div>
+              </div>
             </div>
 
             <div className="rounded-xl border border-border/70 bg-background p-4">
@@ -219,9 +262,19 @@ export default function DisparoEmMassa() {
               </div>
             </div>
 
+            <div className="rounded-xl border border-warning/30 bg-warning-soft p-4 text-xs text-warning">
+              <div className="mb-1 font-semibold">Boas práticas e segurança</div>
+              Use apenas contatos com permissão, evite mensagens repetitivas, respeite limites de envio e use templates aprovados quando necessário.
+            </div>
+
             <Button className="w-full gap-2 bg-gradient-primary" onClick={prepareBlast}>
               <Send className="h-4 w-4" /> Preparar disparo
             </Button>
+            {totalCost > creditBalance && (
+              <div className="rounded-xl border border-destructive/30 bg-destructive-soft p-3 text-xs font-medium text-destructive">
+                Saldo insuficiente para este envio. Custo estimado: {formatBRL(totalCost)}.
+              </div>
+            )}
           </div>
         </div>
       </section>

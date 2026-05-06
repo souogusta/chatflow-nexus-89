@@ -6,10 +6,22 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { REFUSAL_REASONS, Deal } from "@/lib/mock-data";
+import { Deal } from "@/lib/mock-data";
 import { useCRM } from "@/store/crm-store";
 import { toast } from "sonner";
 import { CheckCircle2, XCircle } from "lucide-react";
+
+const LOSS_REASONS = [
+  "Preço",
+  "Sem interesse",
+  "Comprou de concorrente",
+  "Sem resposta",
+  "Fora do perfil",
+  "Sem orçamento",
+  "Atendimento demorado",
+  "Apenas pesquisando",
+  "Outros",
+];
 
 export function FinishDealModal({ deal, open, onOpenChange }: { deal: Deal | null; open: boolean; onOpenChange: (v: boolean) => void }) {
   const { finishDeal } = useCRM();
@@ -26,8 +38,11 @@ export function FinishDealModal({ deal, open, onOpenChange }: { deal: Deal | nul
 
   const handleConfirm = () => {
     if (!deal) return;
+    if (result === "venda" && !description.trim()) {
+      return toast.error("Informe a descrição da venda");
+    }
     if (result === "recusa") {
-      if (!reason) return toast.error("Selecione um motivo de recusa");
+      if (!reason) return toast.error("Selecione um motivo da perda");
       if (reason === "Outros" && !otherReason.trim()) return toast.error("Descreva o motivo");
     }
     finishDeal({
@@ -40,7 +55,7 @@ export function FinishDealModal({ deal, open, onOpenChange }: { deal: Deal | nul
       finishedAt: new Date().toISOString(),
       operatorId: "s1",
     });
-    toast.success(result === "venda" ? "Venda confirmada com sucesso! 🎉" : "Atendimento finalizado");
+    toast.success(result === "venda" ? "Venda confirmada com sucesso" : "Perda registrada");
     reset();
     onOpenChange(false);
   };
@@ -62,7 +77,7 @@ export function FinishDealModal({ deal, open, onOpenChange }: { deal: Deal | nul
                   <CheckCircle2 className="w-4 h-4" /> Venda realizada
                 </TabsTrigger>
                 <TabsTrigger value="recusa" className="data-[state=active]:bg-destructive data-[state=active]:text-destructive-foreground gap-2">
-                  <XCircle className="w-4 h-4" /> Não realizada
+                  <XCircle className="w-4 h-4" /> Perda
                 </TabsTrigger>
               </TabsList>
             </Tabs>
@@ -72,7 +87,7 @@ export function FinishDealModal({ deal, open, onOpenChange }: { deal: Deal | nul
             <div className="space-y-3 animate-fade-in">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <Label htmlFor="amount">Valor da venda (R$)</Label>
+                <Label htmlFor="amount">Valor da venda (R$)</Label>
                   <Input id="amount" type="number" placeholder="0,00" value={amount} onChange={e => setAmount(e.target.value)} />
                 </div>
                 <div>
@@ -93,18 +108,18 @@ export function FinishDealModal({ deal, open, onOpenChange }: { deal: Deal | nul
                 <Input id="product" value={product} onChange={e => setProduct(e.target.value)} />
               </div>
               <div>
-                <Label htmlFor="description">Descrição da venda</Label>
-                <Textarea id="description" value={description} onChange={e => setDescription(e.target.value)} rows={2} />
+                <Label htmlFor="description">Descrição da venda <span className="text-destructive">*</span></Label>
+                <Textarea id="description" value={description} onChange={e => setDescription(e.target.value)} rows={2} placeholder="O que foi vendido, condições combinadas e próximos passos." />
               </div>
             </div>
           ) : (
             <div className="space-y-3 animate-fade-in">
               <div>
-                <Label htmlFor="reason">Motivo da recusa <span className="text-destructive">*</span></Label>
+                <Label htmlFor="reason">Motivo da perda <span className="text-destructive">*</span></Label>
                 <Select value={reason} onValueChange={setReason}>
                   <SelectTrigger><SelectValue placeholder="Selecione um motivo" /></SelectTrigger>
                   <SelectContent>
-                    {REFUSAL_REASONS.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}
+                    {LOSS_REASONS.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>

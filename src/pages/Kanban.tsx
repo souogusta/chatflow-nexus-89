@@ -32,12 +32,13 @@ export default function Kanban() {
   const [filterSellerIds, setFilterSellerIds] = useState<string[]>([]);
   const [filterTags, setFilterTags] = useState<string[]>([]);
   const [filterWaiting, setFilterWaiting] = useState("all");
+  const [filterTemperature, setFilterTemperature] = useState(searchParams.get("temp") || "all");
   const [filterStart, setFilterStart] = useState("");
   const [filterEnd, setFilterEnd] = useState("");
   const selectedDeal = selected ? deals.find(deal => deal.id === selected.id) || selected : null;
   const openDealId = searchParams.get("deal");
   const sellerOptions = useMemo(() => teamUsers.filter(user => user.active && user.role !== "Administrador"), [teamUsers]);
-  const activeFilters = [filterSellerIds.length > 0, filterTags.length > 0, filterWaiting !== "all", Boolean(filterStart), Boolean(filterEnd)]
+  const activeFilters = [filterSellerIds.length > 0, filterTags.length > 0, filterWaiting !== "all", filterTemperature !== "all", Boolean(filterStart), Boolean(filterEnd)]
     .filter(Boolean).length;
   const sellerFilterLabel = filterSellerIds.length === 0
     ? "Todas"
@@ -73,10 +74,11 @@ export default function Kanban() {
         && (!isAdmin || filterSellerIds.length === 0 || filterSellerIds.some(id => responsibleIds.includes(id)))
         && (!isAdmin || filterTags.length === 0 || filterTags.some(tag => deal.tags.includes(tag)))
         && (!isAdmin || filterWaiting === "all" || (filterWaiting === "cliente-aguardando" ? deal.unread : !deal.unread))
+        && (filterTemperature === "all" || deal.temperature === filterTemperature)
         && (!isAdmin || !start || interaction >= start)
         && (!isAdmin || !end || interaction <= end);
     });
-  }, [canViewDeal, deals, filterEnd, filterSellerIds, filterStart, filterTags, filterWaiting, isAdmin]);
+  }, [canViewDeal, deals, filterEnd, filterSellerIds, filterStart, filterTags, filterTemperature, filterWaiting, isAdmin]);
 
   const grouped = useMemo(() => {
     const map = new Map<DealStage, Deal[]>();
@@ -239,6 +241,18 @@ export default function Kanban() {
                       </Popover>
                     </div>
                     <div>
+                      <Label className="text-xs">Temperatura</Label>
+                      <Select value={filterTemperature} onValueChange={setFilterTemperature}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Todas</SelectItem>
+                          <SelectItem value="quente">Quente</SelectItem>
+                          <SelectItem value="morno">Morno</SelectItem>
+                          <SelectItem value="frio">Frio</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
                       <Label className="text-xs">Retorno</Label>
                       <Select value={filterWaiting} onValueChange={setFilterWaiting}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
@@ -249,7 +263,7 @@ export default function Kanban() {
                         </SelectContent>
                       </Select>
                     </div>
-                    <Button variant="outline" className="w-full" onClick={() => { setFilterStart(""); setFilterEnd(""); setFilterSellerIds([]); setFilterTags([]); setFilterWaiting("all"); }}>
+                    <Button variant="outline" className="w-full" onClick={() => { setFilterStart(""); setFilterEnd(""); setFilterSellerIds([]); setFilterTags([]); setFilterTemperature("all"); setFilterWaiting("all"); }}>
                       Limpar filtros
                     </Button>
                   </div>

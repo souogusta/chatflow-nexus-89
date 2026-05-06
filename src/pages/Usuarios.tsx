@@ -7,17 +7,24 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { useCRM } from "@/store/crm-store";
-import { MessageSquare, Smartphone, Tags, UserCheck } from "lucide-react";
+import { MessageSquare, ShieldCheck, Smartphone, Tags, UserCheck } from "lucide-react";
 import { toast } from "sonner";
 
 const INSTANCE_OPTIONS = [
   { id: "wa-01", name: "WhatsApp Principal", phone: "+55 11 98888-0101" },
   { id: "wa-02", name: "WhatsApp Comercial 2", phone: "+55 11 97777-0202" },
-  { id: "wa-03", name: "WhatsApp Pos-venda", phone: "+55 11 96666-0303" },
+  { id: "wa-03", name: "WhatsApp Pós-venda", phone: "+55 11 96666-0303" },
+];
+
+const ROLE_PROFILES = [
+  { name: "Admin", role: "Administrador", desc: "Acesso total ao sistema." },
+  { name: "Vendedor", role: "Vendedora", desc: "Conversas, Kanban, Calendário e seus próprios relatórios." },
+  { name: "Financeiro", role: "Financeiro", desc: "Relatórios, cobranças e leitura de atendimentos." },
+  { name: "Somente leitura", role: "Somente leitura", desc: "Apenas visualização, sem edição." },
 ];
 
 export default function Usuarios() {
-  const { teamUsers, setTeamUsers, deals, tags, hasPermission } = useCRM();
+  const { teamUsers, setTeamUsers, deals, tags, hasPermission, currentUser } = useCRM();
   const configurableUsers = useMemo(() => teamUsers.filter(user => user.role !== "Administrador"), [teamUsers]);
   const [selectedUserId, setSelectedUserId] = useState(configurableUsers[0]?.id || "");
   const selectedUser = teamUsers.find(user => user.id === selectedUserId) || configurableUsers[0];
@@ -36,24 +43,99 @@ export default function Usuarios() {
     patchSelectedUser({ [key]: next });
   };
 
+  const setListValues = (key: "allowedTags" | "allowedConversationIds" | "allowedInstanceIds", values: string[]) => {
+    if (!selectedUser) return;
+    patchSelectedUser({ [key]: values });
+  };
+
   if (!hasPermission("Alterar configurações da empresa")) {
     return (
-      <AppLayout title="Usuarios" subtitle="Acesso restrito">
+      <AppLayout title="Usuários" subtitle="Acesso restrito">
         <div className="card-elevated p-6 text-sm text-muted-foreground">
-          Seu usuario nao tem permissao para configurar acessos de vendedores.
+          Seu usuário não tem permissão para configurar acessos de vendedores.
         </div>
       </AppLayout>
     );
   }
 
   return (
-    <AppLayout title="Usuarios" subtitle="Controle acesso por vendedor, tag, conversa e instancia">
+    <AppLayout title="Usuários" subtitle="Controle perfis, acesso por vendedor, tag, conversa e instância">
+      <section className="card-elevated mb-6 p-5">
+        <div className="mb-4 flex items-center gap-2">
+          <ShieldCheck className="h-4 w-4 text-primary" />
+          <h2 className="font-display text-base font-bold">Perfis prontos de permissão</h2>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {ROLE_PROFILES.map(profile => (
+            <button
+              key={profile.name}
+              type="button"
+              onClick={() => {
+                if (selectedUser) patchSelectedUser({ role: profile.role });
+                toast.success(`Perfil ${profile.name} aplicado`);
+              }}
+              className="rounded-xl border border-border/70 bg-background p-3 text-left transition hover:border-primary/30 hover:bg-secondary/50"
+            >
+              <div className="text-sm font-semibold">{profile.name}</div>
+              <p className="mt-1 line-clamp-3 text-xs text-muted-foreground">{profile.desc}</p>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="card-elevated mb-6 overflow-hidden">
+        <div className="border-b border-border p-5">
+          <h2 className="font-display text-base font-bold">Lista de usuários</h2>
+          <p className="text-xs text-muted-foreground">Status, último acesso, conversas atribuídas e vendas realizadas.</p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b text-left text-xs uppercase text-muted-foreground">
+                <th className="px-5 py-3 font-semibold">Nome</th>
+                <th className="px-5 py-3 font-semibold">E-mail</th>
+                <th className="px-5 py-3 font-semibold">Perfil</th>
+                <th className="px-5 py-3 font-semibold">Status</th>
+                <th className="px-5 py-3 font-semibold">Último acesso</th>
+                <th className="px-5 py-3 font-semibold">Conversas</th>
+                <th className="px-5 py-3 font-semibold">Vendas</th>
+              </tr>
+            </thead>
+            <tbody>
+              {teamUsers.map(user => {
+                const userDeals = deals.filter(deal => [deal.sellerId, ...(deal.assignedSellerIds || [])].includes(user.id));
+                return (
+                  <tr key={user.id} className="border-b border-border/40">
+                    <td className="px-5 py-3 font-medium">{user.name}</td>
+                    <td className="px-5 py-3 text-muted-foreground">{user.email}</td>
+                    <td className="px-5 py-3">{user.role}</td>
+                    <td className="px-5 py-3">
+                      <div className="flex flex-wrap gap-1">
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${user.active ? "bg-success-soft text-success" : "bg-muted text-muted-foreground"}`}>
+                          {user.active ? "Ativo" : "Inativo"}
+                        </span>
+                        {currentUser?.id === user.id && (
+                          <span className="rounded-full bg-primary-soft px-2 py-0.5 text-[10px] font-semibold text-primary">Logado agora</span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-5 py-3 text-muted-foreground">{currentUser?.id === user.id ? "Agora" : user.id === "admin" ? "Hoje" : "Ontem"}</td>
+                    <td className="px-5 py-3">{userDeals.length}</td>
+                    <td className="px-5 py-3">{userDeals.filter(deal => deal.stage === "fechado").length}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
       <section className="card-elevated mb-6 p-6">
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-[320px_1fr]">
           <div>
             <Label>Vendedor</Label>
             <Select value={selectedUser?.id || ""} onValueChange={setSelectedUserId}>
-              <SelectTrigger className="mt-1"><SelectValue placeholder="Selecione um usuario" /></SelectTrigger>
+              <SelectTrigger className="mt-1"><SelectValue placeholder="Selecione um usuário" /></SelectTrigger>
               <SelectContent>
                 {configurableUsers.map(user => (
                   <SelectItem key={user.id} value={user.id}>{user.name}</SelectItem>
@@ -77,12 +159,9 @@ export default function Usuarios() {
               <div className="flex items-center gap-3">
                 <div className="text-right">
                   <div className="text-sm font-semibold">Recebe novos leads</div>
-                  <div className="text-xs text-muted-foreground">Distribuicao automatica</div>
+                  <div className="text-xs text-muted-foreground">Distribuição automática</div>
                 </div>
-                <Switch
-                  checked={selectedUser.receivesNewLeads ?? false}
-                  onCheckedChange={receivesNewLeads => patchSelectedUser({ receivesNewLeads })}
-                />
+                <Switch checked={selectedUser.receivesNewLeads ?? false} onCheckedChange={receivesNewLeads => patchSelectedUser({ receivesNewLeads })} />
               </div>
             </div>
           )}
@@ -97,7 +176,11 @@ export default function Usuarios() {
               <h2 className="font-display text-base font-bold">Tags permitidas</h2>
             </div>
             <div className="mb-3 text-xs text-muted-foreground">
-              Se nenhuma tag estiver marcada, o acesso por tag fica livre e continuam valendo os responsaveis da conversa.
+              Se nenhuma tag estiver marcada, o acesso por tag fica livre e continuam valendo os responsáveis da conversa.
+            </div>
+            <div className="mb-2 flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => setListValues("allowedTags", tags)}>Selecionar todos</Button>
+              <Button variant="outline" size="sm" onClick={() => setListValues("allowedTags", [])}>Limpar</Button>
             </div>
             <div className="max-h-[420px] overflow-y-auto rounded-xl border border-border/70 bg-background p-2">
               {tags.map(tag => (
@@ -115,7 +198,11 @@ export default function Usuarios() {
               <h2 className="font-display text-base font-bold">Conversas permitidas</h2>
             </div>
             <div className="mb-3 text-xs text-muted-foreground">
-              Marque conversas especificas para liberar acesso mesmo quando o vendedor nao for responsavel direto.
+              Marque conversas específicas para liberar acesso mesmo quando o vendedor não for responsável direto.
+            </div>
+            <div className="mb-2 flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => setListValues("allowedConversationIds", deals.map(deal => deal.id))}>Selecionar todos</Button>
+              <Button variant="outline" size="sm" onClick={() => setListValues("allowedConversationIds", [])}>Limpar</Button>
             </div>
             <div className="max-h-[420px] overflow-y-auto rounded-xl border border-border/70 bg-background p-2">
               {deals.map(deal => (
@@ -133,10 +220,10 @@ export default function Usuarios() {
           <section className="card-elevated p-5">
             <div className="mb-4 flex items-center gap-2">
               <Smartphone className="h-4 w-4 text-primary" />
-              <h2 className="font-display text-base font-bold">Instancias permitidas</h2>
+              <h2 className="font-display text-base font-bold">Instâncias permitidas</h2>
             </div>
             <div className="mb-3 text-xs text-muted-foreground">
-              Controle quais canais o vendedor pode usar quando a integracao estiver conectada.
+              Controle quais canais o vendedor pode usar quando a integração estiver conectada.
             </div>
             <div className="space-y-2">
               {INSTANCE_OPTIONS.map(instance => (
@@ -150,8 +237,8 @@ export default function Usuarios() {
               ))}
             </div>
 
-            <Button className="mt-5 w-full gap-2 bg-gradient-primary" onClick={() => toast.success("Permissoes de usuario salvas")}>
-              <UserCheck className="h-4 w-4" /> Salvar permissoes
+            <Button className="mt-5 w-full gap-2 bg-gradient-primary" onClick={() => toast.success("Permissões de usuário salvas")}>
+              <UserCheck className="h-4 w-4" /> Salvar permissões
             </Button>
           </section>
         </div>
